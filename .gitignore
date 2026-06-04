@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+logs/
+*.log
+frontend/node_modules/
+frontend/dist/
+games/setting/*.dat
+games/setting/*.bak
+games/setting/*.dir
+.DS_Store
