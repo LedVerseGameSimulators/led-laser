@@ -9,12 +9,12 @@ import sqlite3
 import threading
 import datetime
 
-# Try to import db_operation from game
+# Try to import db_operation from game; optional for headless testing
+DBOperation = None
 try:
     from database.db_operation import DBOperation
-except ImportError:
-    logger.error("Failed to import DBOperation from game. Check config.py paths.")
-    raise
+except ImportError as e:
+    logger.warning(f"DBOperation not available (OK for headless testing): {e}")
 
 # Our own scores live in the same sqlite file as the game DB.
 _SCORES_DB = "/Users/apple/parallel-work/ledhexagon_clone/setting/ledplaydb.sqlite"
@@ -24,10 +24,15 @@ class Database:
     """Wrapper around game's db_operation.py"""
 
     def __init__(self):
-        self.db_op = DBOperation()
+        self.db_op = None
+        if DBOperation:
+            try:
+                self.db_op = DBOperation('localhost')  # Climb decompiled version needs ip_address arg
+                logger.info(f"Database connected to {DB_NAME}")
+            except Exception as e:
+                logger.warning(f"DBOperation init failed (OK for headless testing): {e}")
         self._scores_lock = threading.Lock()
         self._ensure_scores_table()
-        logger.info(f"Database connected to {DB_NAME}")
 
     # ===== OUR SCORES TABLE (kiosk leaderboard) =====
     def _scores_conn(self):
@@ -67,6 +72,8 @@ class Database:
     # ===== PLAYER LOOKUP =====
     def get_player_by_card(self, card_id: str):
         """Lookup player by RFID card ID"""
+        if not self.db_op:
+            return None
         try:
             result = self.db_op.search_custom_by_field("card_id", card_id)
             if result and len(result) > 0:
@@ -78,6 +85,8 @@ class Database:
 
     def get_player_by_id(self, custom_id: int):
         """Lookup player by customer ID"""
+        if not self.db_op:
+            return None
         try:
             result = self.db_op.search_custom_tb_by_id(custom_id)
             if result and len(result) > 0:
@@ -120,6 +129,8 @@ class Database:
     # ===== SESSION TIMER =====
     def update_session_start(self, card_id: str, session_start_time: str):
         """Update session start time for 60-min timer"""
+        if not self.db_op:
+            return False
         try:
             custom_id = self.get_player_by_card(card_id)[0]
             self.db_op.update_custom_value(custom_id, "session_start_time", session_start_time)
@@ -170,6 +181,8 @@ class Database:
 
     def close(self):
         """Close database connection"""
+        if not self.db_op:
+            return
         try:
             self.db_op.close_db()
             logger.info("Database closed")

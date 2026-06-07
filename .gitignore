@@ -11,3 +11,7 @@ games/setting/*.dat
 games/setting/*.bak
 games/setting/*.dir
 .DS_Store
+
+# Source archives (local backup bundles)
+games/source/*.rar
+*.rar

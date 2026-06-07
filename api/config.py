@@ -2,17 +2,23 @@
 API Configuration - Game and Database Settings
 """
 import os
+import sys
 from pathlib import Path
 
+# GAMES_ROOT: path to the game source directory.
+# Default = ../games/ relative to this repo (works from activerse_final_changes/led-hexagon/).
+# Override with GAMES_ROOT env var if running from a different location.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+GAMES_ROOT = Path(os.getenv("GAMES_ROOT", str(_REPO_ROOT / "games")))
+
 # Game Configuration
-GAME_NAME = "led_hex"
-GAME_DIR = Path("/Users/apple/parallel-work/ledhexagon_clone")
+GAME_NAME = "laser"
+GAME_DIR = GAMES_ROOT
 GAME_SOURCE_DIR = GAME_DIR / "game_play"
 GAME_LEVEL_DIR = GAME_DIR / "source"
 GAME_SETTING_DIR = GAME_DIR / "setting"
 
 # Add game source to path for imports
-import sys
 if str(GAME_SOURCE_DIR) not in sys.path:
     sys.path.insert(0, str(GAME_SOURCE_DIR))
 
@@ -27,7 +33,7 @@ DB_NAME = os.getenv("DB_NAME", "ledplaydb")
 
 # API Configuration
 API_HOST = "0.0.0.0"
-API_PORT = int(os.getenv("API_PORT", 8000))
+API_PORT = int(os.getenv("API_PORT", 8003))
 API_DEBUG = os.getenv("API_DEBUG", "False").lower() == "true"
 
 # Game Configuration

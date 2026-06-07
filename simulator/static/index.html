@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Laser Trap — Corridor Simulator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #030306; color: #e8e8f0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+      padding: 12px; user-select: none;
+    }
+    header {
+      width: 100%; max-width: 920px;
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 10px; border-bottom: 1px solid #1a1a28; margin-bottom: 12px;
+    }
+    h1 { font-size: 1rem; color: #ff4466; }
+    .stats { display: flex; gap: 14px; font-size: 0.72rem; color: #888; }
+    .stat-value { font-size: 0.95rem; font-weight: 700; color: #ff6688; }
+    #conn-badge { font-size: 0.72rem; display: flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+    .dot.connected { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+
+    #corridor {
+      display: grid;
+      grid-template-columns: 56px 1fr 56px;
+      gap: 8px;
+      width: min(96vw, 900px);
+      height: min(70vh, 520px);
+      background: #020204;
+      border: 2px solid #1a1028;
+      border-radius: 10px;
+      padding: 10px;
+      box-shadow: inset 0 0 80px rgba(0,0,0,0.8);
+    }
+
+    .wall-col {
+      display: flex; flex-direction: column; height: 100%;
+    }
+    .wall-label {
+      font-size: 0.6rem; color: #555; text-align: center; letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .wall-dots {
+      flex: 1; display: flex; flex-direction: column; justify-content: space-between;
+      gap: 3px; padding: 2px 0;
+    }
+    .wall-dot {
+      flex: 1; min-height: 14px; border-radius: 4px;
+      border: 1px solid #1a2a1a;
+      background: #0a120a;
+      box-shadow: inset 0 0 4px rgba(0,0,0,0.5);
+      pointer-events: none;
+    }
+
+    #floor-wrap {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; min-width: 0;
+    }
+    #floor-label { font-size: 0.65rem; color: #444; margin-bottom: 6px; }
+    #floor-grid {
+      display: grid; gap: 2px; width: 100%; max-width: 100%;
+      aspect-ratio: 16 / 6;
+    }
+    .floor-cell {
+      border-radius: 2px; background: #08080c; cursor: crosshair;
+      transition: background 0.05s, box-shadow 0.05s;
+    }
+    .floor-cell.player {
+      outline: 2px solid #fff; outline-offset: -1px;
+      box-shadow: 0 0 10px rgba(255,255,255,0.5);
+    }
+    .floor-cell.press-hint {
+      outline: 1px dashed rgba(68,136,255,0.6);
+    }
+
+    #hint {
+      max-width: 920px; width: 100%; margin-top: 10px;
+      font-size: 0.78rem; color: #666; text-align: center; line-height: 1.5;
+    }
+    #hint strong.blue { color: #4488ff; }
+    #hint strong.red { color: #f44; }
+    #active-zone { margin-top: 6px; font-size: 0.8rem; color: #888; text-align: center; }
+    #log {
+      width: min(96vw, 900px); margin-top: 8px;
+      background: #08080c; border: 1px solid #1a1a28; border-radius: 6px;
+      padding: 6px 10px; font-family: monospace; font-size: 0.68rem; color: #555;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>⚡ Laser Trap — Corridor Simulator</h1>
+      <div class="stats">
+        <div>Score: <span class="stat-value" id="score">0</span></div>
+        <div>Life: <span class="stat-value" id="life">—</span></div>
+        <div>Level: <span class="stat-value" id="level">—</span></div>
+      </div>
+    </div>
+    <div id="conn-badge"><span class="dot" id="dot"></span><span id="conn-text">Connecting…</span></div>
+  </header>
+
+  <div id="corridor">
+    <div class="wall-col">
+      <div class="wall-label">LEFT WALL</div>
+      <div class="wall-dots" id="wall-left"></div>
+    </div>
+    <div id="floor-wrap">
+      <div id="floor-label">YOU ARE HERE — click a floor tile (dodge red lasers)</div>
+      <div id="floor-grid"></div>
+    </div>
+    <div class="wall-col">
+      <div class="wall-label">RIGHT WALL</div>
+      <div class="wall-dots" id="wall-right"></div>
+    </div>
+  </div>
+
+  <p id="hint">
+    In the venue you stand on the floor and <strong>physically press</strong> the blue wall button.
+    Here, click the <strong class="blue">floor tile in front of</strong> the lit blue wall dot to score.
+    That tile stays safe (not red). Stepping on <strong class="red">red lasers</strong> costs life.
+  </p>
+  <p id="active-zone"></p>
+  <div id="log"></div>
+
+  <script>
+    const WS_URL = `ws://${location.hostname}:${location.port || 8768}/ws`;
+    const HOUSING = [0, 42, 0];
+    const DOTS_DEFAULT = 7;
+
+    let ws, rows = 6, cols = 16, dotsPerSide = DOTS_DEFAULT;
+    let playerPos = null;
+    let wallSlots = { left: [], right: [] };
+    let goalWalls = [];
+    let lastWallDisplay = [];
+
+    function log(msg) { document.getElementById('log').textContent = msg; }
+
+    function setConnected(ok) {
+      document.getElementById('dot').className = 'dot ' + (ok ? 'connected' : '');
+      document.getElementById('conn-text').textContent = ok ? 'Connected' : 'Disconnected';
+    }
+
+    function isLit(rgb) { return rgb[0] + rgb[1] + rgb[2] > 80; }
+    function isBlue(rgb) { return rgb[2] > 150 && rgb[0] < 80; }
+
+    function buildWallDots() {
+      ['wall-left', 'wall-right'].forEach((id, sideIdx) => {
+        const el = document.getElementById(id);
+        el.innerHTML = '';
+        const side = sideIdx === 0 ? 'left' : 'right';
+        const slots = wallSlots[side] || [];
+        const n = Math.max(slots.length, dotsPerSide);
+        for (let i = 0; i < n; i++) {
+          const d = document.createElement('div');
+          d.className = 'wall-dot';
+          d.dataset.side = side;
+          d.dataset.slot = i;
+          el.appendChild(d);
+        }
+      });
+    }
+
+    function buildFloor(r, c) {
+      const grid = document.getElementById('floor-grid');
+      grid.style.gridTemplateColumns = `repeat(${c}, 1fr)`;
+      grid.innerHTML = '';
+      for (let ri = 0; ri < r; ri++) {
+        for (let ci = 0; ci < c; ci++) {
+          const d = document.createElement('div');
+          d.className = 'floor-cell';
+          d.dataset.row = ri;
+          d.dataset.col = ci;
+          d.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            sendFloorPress(ri, ci);
+          });
+          grid.appendChild(d);
+        }
+      }
+    }
+
+    function sendFloorPress(row, col) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      playerPos = [row, col];
+      ws.send(JSON.stringify({ type: 'press', row, col }));
+    }
+
+    function pressTileForGoal(wi) {
+      const mid = Math.floor(rows / 2);
+      if (wi === 0) return [mid, 0];
+      if (wi === 1) return [mid, cols - 1];
+      return null;
+    }
+
+    function applyFrame(data) {
+      if (data.rows) rows = data.rows;
+      if (data.cols) cols = data.cols;
+      if (data.dots_per_side) dotsPerSide = data.dots_per_side;
+      if (data.wall_slots) wallSlots = data.wall_slots;
+      if (data.goal_walls) goalWalls = data.goal_walls;
+      if (data.player) playerPos = data.player;
+      if (data.wall_display) lastWallDisplay = data.wall_display;
+
+      const floorCells = document.getElementById('floor-grid').children;
+      if (floorCells.length !== rows * cols) {
+        buildWallDots();
+        buildFloor(rows, cols);
+      }
+
+      const wallDisplay = lastWallDisplay;
+      let activeText = 'Waiting for blue target…';
+
+      function paintSide(side, containerId) {
+        const slots = wallSlots[side] || [];
+        const dots = document.getElementById(containerId).children;
+        for (let i = 0; i < dots.length; i++) {
+          const slot = slots[i] || { wall_index: side === 'left' ? 0 : 1, row: i };
+          const wi = slot.wall_index;
+          const rgb = wallDisplay[wi] || [0, 0, 0];
+          const isGoal = goalWalls.includes(wi) && isBlue(rgb);
+          const mod = dots[i];
+          if (isGoal) {
+            mod.style.background = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+            mod.style.borderColor = '#66aaff';
+            mod.style.boxShadow = `0 0 14px rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.8)`;
+            activeText = `Blue on ${side.toUpperCase()} wall — step on floor tile row ${slot.row + 1}, ${side === 'left' ? 'left edge' : 'right edge'}`;
+          } else if (isLit(rgb) && !isBlue(rgb)) {
+            mod.style.background = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+            mod.style.borderColor = '#aa4444';
+            mod.style.boxShadow = '0 0 8px rgba(255,0,0,0.4)';
+          } else {
+            mod.style.background = `rgb(${HOUSING[0]},${HOUSING[1]},${HOUSING[2]})`;
+            mod.style.borderColor = '#1a2a1a';
+            mod.style.boxShadow = 'inset 0 0 4px rgba(0,0,0,0.5)';
+          }
+        }
+      }
+
+      paintSide('left', 'wall-left');
+      paintSide('right', 'wall-right');
+      document.getElementById('active-zone').textContent = activeText;
+
+      const hintTiles = new Set();
+      goalWalls.forEach(wi => {
+        const pt = pressTileForGoal(wi);
+        if (pt) hintTiles.add(pt[0] + ',' + pt[1]);
+      });
+
+      const floor = data.floor || [];
+      for (let i = 0; i < floorCells.length; i++) {
+        const cell = floorCells[i];
+        const ri = +cell.dataset.row, ci = +cell.dataset.col;
+        const [r, g, b] = floor[i] || [0, 0, 0];
+        const on = r + g + b > 25;
+        cell.style.background = on ? `rgb(${r},${g},${b})` : '#08080c';
+        cell.style.boxShadow = (r > 180 && g < 80) ? '0 0 10px rgba(255,30,30,0.7)' : 'none';
+        cell.classList.toggle('player', playerPos && playerPos[0] === ri && playerPos[1] === ci);
+        cell.classList.toggle('press-hint', hintTiles.has(ri + ',' + ci));
+      }
+    }
+
+    function connect() {
+      ws = new WebSocket(WS_URL);
+      ws.onopen = () => { setConnected(true); log('WS connected — 2 walls, floor input'); };
+      ws.onclose = () => { setConnected(false); setTimeout(connect, 1500); };
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.type === 'corridor_frame') applyFrame(data);
+        } catch (e) {}
+      };
+    }
+
+    async function pollStats() {
+      try {
+        const r = await fetch(`http://${location.hostname}:8003/game-state`);
+        const d = await r.json();
+        if (d.success && d.state) {
+          document.getElementById('score').textContent = d.state.score ?? 0;
+          document.getElementById('life').textContent = d.state.life ?? '—';
+          document.getElementById('level').textContent = d.state.current_level ?? '—';
+          if (d.state.player_pos) playerPos = d.state.player_pos;
+        }
+      } catch (e) {}
+    }
+
+    buildWallDots();
+    buildFloor(rows, cols);
+    connect();
+    setInterval(pollStats, 500);
+  </script>
+</body>
+</html>

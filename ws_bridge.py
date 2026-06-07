@@ -1,12 +1,12 @@
 """
-WebSocket bridge: headless API game state → simulator UI
-Connects to http://localhost:8000 API, broadcasts game state via WebSocket
+WebSocket bridge: headless API game state → Laser wall simulator UI
 """
 
 import asyncio
 import json
-import threading
+import os
 import time
+from pathlib import Path
 from typing import Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -17,17 +17,18 @@ import httpx
 
 app = FastAPI()
 
-# Serve static simulator files
-SIMULATOR_STATIC = "/Users/apple/parallel-work/ledhexagon_clone/simulator/static"
+SIMULATOR_STATIC = str(Path(__file__).resolve().parent / "simulator" / "static")
 app.mount("/static", StaticFiles(directory=SIMULATOR_STATIC), name="static")
 
 HOST = "127.0.0.1"
-PORT = 8765
-API_BASE_URL = "http://localhost:8000"
+_DEFAULT_API_PORT = 8003
+_DEFAULT_WS_PORT = 8768
+API_PORT = int(os.getenv("API_PORT", _DEFAULT_API_PORT))
+PORT = int(os.getenv("WS_BRIDGE_PORT", _DEFAULT_WS_PORT))
+API_BASE_URL = os.getenv("API_BASE_URL", f"http://localhost:{API_PORT}")
+
 
 class GameBridge:
-    """Bridge between API and WebSocket clients"""
-
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
         self.lock = asyncio.Lock()
@@ -38,52 +39,44 @@ class GameBridge:
         await ws.accept()
         async with self.lock:
             self.active_connections.add(ws)
-        print(f"✓ Client connected. Total: {len(self.active_connections)}")
 
     async def disconnect(self, ws: WebSocket):
         async with self.lock:
             self.active_connections.discard(ws)
-        print(f"✓ Client disconnected. Total: {len(self.active_connections)}")
 
     async def broadcast_state(self, game_state: dict):
-        """Send game state to all connected clients in simulator format"""
         if not self.active_connections:
             return
 
-        # Use real LED display from game state, or fallback to empty grid.
-        # Each cell = 3 ring colors [[R,G,B],[R,G,B],[R,G,B]] (outer,mid,inner).
-        led_display = game_state.get("led_display", [])
+        def _rgb(cell):
+            if isinstance(cell, (list, tuple)) and len(cell) >= 3:
+                return [int(cell[0]), int(cell[1]), int(cell[2])]
+            return [0, 0, 0]
 
-        def _empty_tile():
-            return [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        floor_display = game_state.get("floor_display", [])
+        wall_display = [_rgb(w) for w in game_state.get("wall_display", [])]
+        rows = int(game_state.get("grid_rows", 6))
+        cols = int(game_state.get("grid_cols", 16))
+        dots = int(game_state.get("dots_per_side", 7))
+        wall_slots = game_state.get("wall_slots") or {"left": [], "right": []}
+        player = game_state.get("player_pos")
+        goal_walls = game_state.get("goal_walls") or []
 
-        if led_display and len(led_display) == 416:  # 16 * 26 = 416
-            grid = []
-            for i in range(16):
-                row = []
-                for j in range(26):
-                    cell = led_display[i * 26 + j]
-                    # 3-ring cell: list of 3 rgb triples
-                    if (isinstance(cell, (list, tuple)) and len(cell) >= 3
-                            and isinstance(cell[0], (list, tuple))):
-                        row.append([list(cell[0]), list(cell[1]), list(cell[2])])
-                    # flat rgb -> broadcast to 3 rings
-                    elif isinstance(cell, (list, tuple)) and len(cell) >= 3:
-                        rgb = list(cell[:3])
-                        row.append([rgb, rgb, rgb])
-                    else:
-                        row.append(_empty_tile())
-                grid.append(row)
-        else:
-            grid = [[_empty_tile() for _ in range(26)] for _ in range(16)]
+        floor = [_rgb(floor_display[i]) if i < len(floor_display) else [0, 0, 0]
+                 for i in range(rows * cols)]
 
         msg = json.dumps({
-            "type": "frame",
-            "rows": 16,
-            "cols": 26,
-            "grid": grid,
+            "type": "corridor_frame",
+            "wall_display": wall_display,
+            "wall_slots": wall_slots,
+            "dots_per_side": dots,
+            "goal_walls": goal_walls,
+            "player": player,
+            "floor": floor,
+            "rows": rows,
+            "cols": cols,
             "fps": 60,
-            "game_id": self.current_game_id
+            "game_id": self.current_game_id,
         })
 
         async with self.lock:
@@ -91,90 +84,80 @@ class GameBridge:
             for ws in self.active_connections:
                 try:
                     await ws.send_text(msg)
-                except Exception as e:
-                    print(f"✗ Send error: {e}")
+                except Exception:
                     dead.add(ws)
             self.active_connections -= dead
 
+
 bridge = GameBridge()
+
 
 @app.get("/")
 async def index():
-    """Serve simulator UI"""
     return FileResponse(f"{SIMULATOR_STATIC}/index.html")
+
 
 @app.get("/status")
 async def status():
-    """Health check"""
     return {
         "status": "ok",
         "game_id": bridge.current_game_id,
-        "game_state": bridge.game_state,
-        "connected_clients": len(bridge.active_connections)
+        "connected_clients": len(bridge.active_connections),
     }
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
-    """WebSocket endpoint for simulator UI"""
     await bridge.connect(ws)
     async with httpx.AsyncClient() as client:
         try:
             while True:
-                # Client sends tile commands: {type:'press'|'release', row, col}
                 msg = await ws.receive_text()
                 try:
                     data = json.loads(msg)
                     if data.get("type") in ("press", "release"):
-                        # Forward to API game-input endpoint
+                        body = {"type": data["type"], "game_id": data.get("game_id")}
+                        if data.get("row") is not None:
+                            body["row"] = data["row"]
+                            body["col"] = data["col"]
+                        else:
+                            body["wall_index"] = data.get("wall_index")
                         await client.post(
                             f"{API_BASE_URL}/game-input",
-                            json={
-                                "row": data.get("row"),
-                                "col": data.get("col"),
-                                "type": data["type"],
-                            },
+                            json=body,
                             timeout=2,
                         )
                 except Exception as e:
-                    print(f"✗ Input forward error: {e}")
+                    print(f"Input forward error: {e}")
         except WebSocketDisconnect:
             await bridge.disconnect(ws)
 
+
 async def poll_game_state():
-    """Poll API for game state and broadcast to clients"""
     async with httpx.AsyncClient() as client:
         while True:
             try:
-                # Get active game state from API
                 resp = await client.get(f"{API_BASE_URL}/game-state", timeout=5)
                 data = resp.json()
-
                 if data.get("success"):
-                    # Game running - update state
                     bridge.current_game_id = data["game_id"]
                     bridge.game_state = data["state"]
                     await bridge.broadcast_state(bridge.game_state)
                 else:
-                    # No active game
                     bridge.current_game_id = None
                     bridge.game_state = {}
-
-                await asyncio.sleep(0.016)  # ~60fps
-
+                await asyncio.sleep(0.016)
             except Exception as e:
-                print(f"✗ Poll error: {e}")
+                print(f"Poll error: {e}")
                 await asyncio.sleep(1)
+
 
 @app.on_event("startup")
 async def _start_poller():
-    """Run poller in uvicorn's own event loop (same loop as websockets).
-    Avoids cross-loop 'bound to a different event loop' errors."""
     asyncio.create_task(poll_game_state())
 
-if __name__ == "__main__":
-    print(f"WS Bridge: {HOST}:{PORT}")
-    print(f"API: {API_BASE_URL}")
-    print(f"Web UI: http://{HOST}:{PORT}")
 
-    # Start WebSocket server (poller launches via startup event)
+if __name__ == "__main__":
+    print(f"Laser WS Bridge: {HOST}:{PORT}")
+    print(f"API: {API_BASE_URL}")
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")

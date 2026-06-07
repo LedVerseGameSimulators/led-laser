@@ -21,14 +21,15 @@ class GameUtil:
 
     
     def get_game_speed(self, game_level, leval_span):
+        game_level_speed = 1
         if game_level <= 1:
             game_level_speed = 1 - leval_span
             if game_level_speed < 0:
                 game_level_speed = 0.1
-            elif game_level == 2:
-                game_level_speed = 1
-            else:
-                game_level_speed = 1 + leval_span
+        elif game_level == 2:
+            game_level_speed = 1
+        else:
+            game_level_speed = 1 + leval_span
         return game_level_speed
 
     

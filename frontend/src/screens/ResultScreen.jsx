@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-const API_URL = 'http://localhost:8000'
+import { API_URL } from '../config'
 
 export default function ResultScreen({ result, config, onPlayAgain, onLogout }) {
   const score = result?.score ?? 0

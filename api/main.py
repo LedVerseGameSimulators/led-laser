@@ -9,7 +9,7 @@ import json
 from loguru import logger
 import datetime
 
-from .config import API_HOST, API_PORT, API_DEBUG, GAME_NAME
+from .config import API_HOST, API_PORT, API_DEBUG, GAME_NAME, GAMES_ROOT
 from .models import (
     LoginRequest, LoginResponse, PlayerInfo,
     StartGameRequest, StartGameResponse,
@@ -39,7 +39,13 @@ app.add_middleware(
 )
 
 # Get singletons
-db = get_db()
+# Database may fail if MySQL not configured; continue for headless testing
+try:
+    db = get_db()
+except Exception as e:
+    logger.warning(f"Database init failed (OK for headless testing): {e}")
+    db = None
+
 game_manager = get_manager()
 
 
@@ -90,8 +96,8 @@ async def start_game(request: StartGameRequest) -> StartGameResponse:
     logger.info(f"Start game request: card={request.card_id}, level={request.level}")
 
     try:
-        # Check session remaining time (60-min timer)
-        time_left = db.check_session_remaining(request.card_id)
+        # Check session remaining time (60-min timer) - skip if no DB
+        time_left = db.check_session_remaining(request.card_id) if db else None
         if time_left is not None and time_left <= 0:
             logger.warning(f"Session expired for card: {request.card_id}")
             return StartGameResponse(
@@ -258,7 +264,7 @@ async def get_game_settings():
     import shelve
 
     try:
-        setting_path = "/Users/apple/parallel-work/ledhexagon_clone/setting/led_parameter"
+        setting_path = str(GAMES_ROOT / "setting" / "led_parameter")
         db = shelve.open(setting_path)
 
         # Load LED layout and dimensions
@@ -273,7 +279,8 @@ async def get_game_settings():
             "max_score": 1000
         }
 
-        db.close()
+        if db:
+            db.close()
         return settings
     except Exception as e:
         logger.warning(f"Could not load settings: {e}, using defaults")
@@ -289,30 +296,30 @@ async def get_game_settings():
 # ============= GAME LEVELS ENDPOINT =============
 @app.get("/levels")
 async def get_levels():
-    """All levels grouped into 4 categories. Fast — no shelve scan (dir+ext only).
+    """Laser Trap levels grouped by series.
 
     Categories:
-      extra    - Extra/*.led       (1P, test levels 17-26)
-      basic    - source/---/*.ledb (2P, DK/YCDK series)
-      advanced - source/--/*.led   (1P, YC series)
-      pro      - source/-/*.led    (1P, 00-16 large)
+      casual   - source/-/A*.led
+      level    - source/--/B*.led
+      advanced - source/---/C*.led
+      intro    - source/----/*.led
     """
     import os, glob as _glob
 
-    clone = "/Users/apple/parallel-work/ledhexagon_clone"
+    src = str(GAMES_ROOT)
 
     BUCKETS = [
-        ("extra",    os.path.join(clone, "Extra", "*.led"),          False, "led"),
-        ("basic",    os.path.join(clone, "source", "---", "*.ledb"), True,  "ledb"),
-        ("advanced", os.path.join(clone, "source", "--", "*.led"),   False, "led"),
-        ("pro",      os.path.join(clone, "source", "-", "*.led"),    False, "led"),
+        ("casual",   os.path.join(src, "source", "-",    "*.led"), False, "led"),
+        ("level",    os.path.join(src, "source", "--",   "*.led"), False, "led"),
+        ("advanced", os.path.join(src, "source", "---",  "*.led"), False, "led"),
+        ("intro",    os.path.join(src, "source", "----", "*.led"), False, "led"),
     ]
 
     levels = []
     for bucket, pattern, multiplayer, ftype in BUCKETS:
         for f in sorted(_glob.glob(pattern)):
             stem = os.path.basename(f).rsplit(".", 1)[0]
-            display = f"Level {stem}" if stem.isdigit() else stem
+            display = stem  # A001, B01, DK01 etc — names are already meaningful
             levels.append({
                 "id":          stem,
                 "name":        display,
@@ -337,16 +344,13 @@ async def get_levels():
 # ============= GAME INPUT ENDPOINT =============
 @app.post("/game-input")
 async def game_input(payload: dict):
-    """Player input from simulator: press/release a tile.
-    Body: {row, col, type: 'press'|'release', game_id?(optional)}.
-    Applies to specified game, or first active game if id omitted."""
-    row = payload.get("row")
-    col = payload.get("col")
+    """Simulator input: floor tile press (row/col) or direct wall_index (debug).
+    Body: {row, col, type: 'press'|'release'} or {wall_index, type}."""
     action = payload.get("type", "press")
     game_id = payload.get("game_id")
-
-    if row is None or col is None:
-        return {"success": False, "error": "row and col required"}
+    row = payload.get("row")
+    col = payload.get("col")
+    wall_index = payload.get("wall_index")
 
     game = None
     if game_id:
@@ -359,8 +363,14 @@ async def game_input(payload: dict):
     if not game:
         return {"success": False, "error": "No active game"}
 
-    ok = game.apply_input(int(row), int(col), action)
-    return {"success": ok, "score": game.score}
+    if row is not None and col is not None:
+        ok = game.apply_floor_input(int(row), int(col), action)
+    elif wall_index is not None:
+        ok = game.apply_input(int(wall_index), action)
+    else:
+        return {"success": False, "error": "row/col or wall_index required"}
+
+    return {"success": ok, "score": game.score, "life": game.life}
 
 
 # ============= SAVE SCORE =============
@@ -452,7 +462,8 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     logger.info("API shutting down")
-    db.close()
+    if db:
+        db.close()
 
 
 # ============= RUN =============

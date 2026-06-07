@@ -16,7 +16,7 @@ export default function LoginScreen({ onLogin, playerCount = 1, onBack }) {
   return (
     <div className="screen">
       <div className="card">
-        <h1>🎮 LED Hex Game</h1>
+        <h1>⛰️ Climb</h1>
         <p style={{ textAlign: 'center', color: '#888', marginTop: '-10px' }}>
           {playerCount === 2 ? '2-Player Login' : '1-Player Login'}
         </p>

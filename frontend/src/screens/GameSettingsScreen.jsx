@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 
-const API_URL = 'http://localhost:8000'
+import { API_URL } from '../config'
 
 const CAT_LABEL = {
-  extra:    { label: 'Extra',    desc: '10 test levels' },
-  basic:    { label: 'Basic',    desc: 'DK series (2P)' },
-  advanced: { label: 'Advanced', desc: 'YC series' },
-  pro:      { label: 'Pro',      desc: 'Large levels' },
+  'casual':   { label: 'Casual',   desc: 'A001-A009' },
+  'level':    { label: 'Level',    desc: 'B01-B09' },
+  'advanced': { label: 'Advanced', desc: 'C01-C09' },
+  'intro':    { label: 'Intro',    desc: '02-10' },
 }
 
 const DIFFICULTIES = ['easy', 'normal', 'hard']
@@ -14,7 +14,7 @@ const DIFFICULTIES = ['easy', 'normal', 'hard']
 export default function GameSettingsScreen({ game, onConfirm, onBack }) {
   const [categories, setCategories] = useState({})
   const [playerCount, setPlayerCount] = useState(1)
-  const [category, setCategory]       = useState('extra')
+  const [category, setCategory]       = useState('casual')
   const [level, setLevel]             = useState('')
   const [difficulty, setDifficulty]   = useState('normal')
   const [loading, setLoading]         = useState(true)
@@ -25,8 +25,8 @@ export default function GameSettingsScreen({ game, onConfirm, onBack }) {
       .then(d => {
         if (d.success) {
           setCategories(d.categories || {})
-          // default: extra → first level
-          const first = (d.categories?.extra || [])[0]
+          // default: a-series → first level
+          const first = (d.categories?.['casual'] || [])[0]
           if (first) setLevel(first.id)
         }
       })
@@ -41,10 +41,10 @@ export default function GameSettingsScreen({ game, onConfirm, onBack }) {
     if (lvls.length) setLevel(lvls[0].id)
   }
 
-  // When player count changes, switch to basic (2P) or extra (1P)
+  // When player count changes, switch to dk-series (2P) or a-series (1P)
   const handlePlayerCount = (n) => {
     setPlayerCount(n)
-    const defaultCat = n === 2 ? 'basic' : 'extra'
+    const defaultCat = 'casual'
     setCategory(defaultCat)
     const lvls = filteredLevels(defaultCat, n)
     if (lvls.length) setLevel(lvls[0].id)
@@ -86,9 +86,9 @@ export default function GameSettingsScreen({ game, onConfirm, onBack }) {
   return (
     <div className="screen">
       <div className="card">
-        <h1>Game Settings</h1>
+        <h1>⛰️ Climb</h1>
         <p style={{ color: '#888', textAlign: 'center', marginTop: '-10px' }}>
-          {game?.toUpperCase()}
+          Game Settings
         </p>
 
         {/* Players */}
