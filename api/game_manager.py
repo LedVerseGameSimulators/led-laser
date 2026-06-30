@@ -13,6 +13,12 @@ from typing import Dict, Optional
 from loguru import logger
 from .config import GAME_TIMEOUT_SECONDS, MAX_CONCURRENT_GAMES, GAMES_ROOT
 
+USE_SERIAL_HD = os.environ.get("USE_SERIAL_HD", "0") == "1"
+if USE_SERIAL_HD:
+    _games_dir = str(GAMES_ROOT)
+    if _games_dir not in sys.path:
+        sys.path.insert(0, _games_dir)
+
 # Mock hardware/network dependencies before importing game_play
 # These are not needed for headless game logic:
 # - tkinter: GUI (game_running.py imports tkinter.messagebox)
@@ -43,15 +49,17 @@ mocks = {
     'gui2.gui_util': MagicMock(),
     'ui_design': MagicMock(),
     # Hardware
-    'serial': MagicMock(),
-    'serial.tools': MagicMock(),
-    'serial.tools.list_ports': MagicMock(),
-    'led': MagicMock(),
-    'led.led_control': MagicMock(),
-    'led.communication': MagicMock(),
-    'led.position_convert': MagicMock(),
-    'led.led_serial_thread': MagicMock(),
-    'led.led_control_c': MagicMock(),
+    **({} if USE_SERIAL_HD else {
+        'serial': MagicMock(),
+        'serial.tools': MagicMock(),
+        'serial.tools.list_ports': MagicMock(),
+        'led': MagicMock(),
+        'led.led_control': MagicMock(),
+        'led.communication': MagicMock(),
+        'led.position_convert': MagicMock(),
+        'led.led_serial_thread': MagicMock(),
+        'led.led_control_c': MagicMock(),
+    }),
     'net': MagicMock(),
     'socket': MagicMock(),
     # Audio/Video
@@ -87,6 +95,36 @@ mocks = {
 
 for mod_name, mock in mocks.items():
     sys.modules[mod_name] = mock
+
+_HW_DEFAULT_ROWS = 6
+_HW_DEFAULT_COLS = 16
+_hw_led_control = None
+_hw_layout_type = 0
+
+def _hw_init():
+    global _hw_led_control, _hw_layout_type
+    if _hw_led_control is not None:
+        return _hw_led_control
+    try:
+        import shelve as _s
+        from led import led_control as _lc
+        db = _s.open(str(GAMES_ROOT / 'setting' / 'led_parameter'), flag='r')
+        list_com_info = db.get('list_com_info', [])
+        layout_type   = int(db.get('led_layout_type', 0))
+        no_use        = db.get('floor_layout_coors_no_use', [])
+        rows          = int(float(db.get('value_high', _HW_DEFAULT_ROWS)))
+        cols          = int(float(db.get('value_width', _HW_DEFAULT_COLS)))
+        db.close()
+        _lc.init_layout(layout_type, rows, cols, no_use)
+        errors = _lc.init_com(list_com_info)
+        if errors:
+            logger.warning(f"HW init COM errors (non-fatal): {errors}")
+        logger.info(f"Hardware ready: {len(list_com_info)} port(s), {rows}×{cols}, layout={layout_type}")
+        _hw_led_control = _lc
+        _hw_layout_type = layout_type
+    except Exception as e:
+        logger.error(f"Hardware init failed: {e}")
+    return _hw_led_control
 
 # Will import after config is set
 # from game_play.Play import Play
@@ -973,12 +1011,15 @@ class GameManager:
         def _run_game():
             try:
                 # Double-check: reinstall mocks in this thread
-                if 'serial' not in sys.modules:
-                    sys.modules['serial'] = MagicMock()
-                if 'led' not in sys.modules:
-                    sys.modules['led'] = MagicMock()
-                if 'led.led_control' not in sys.modules:
-                    sys.modules['led.led_control'] = MagicMock()
+                if not USE_SERIAL_HD:
+                    if 'serial' not in sys.modules:
+                        sys.modules['serial'] = MagicMock()
+                    if 'led' not in sys.modules:
+                        sys.modules['led'] = MagicMock()
+                    if 'led.led_control' not in sys.modules:
+                        sys.modules['led.led_control'] = MagicMock()
+                else:
+                    _hw_init()
 
                 logger.info(f"Starting game loop: {game_id}")
                 game.running = True
@@ -1303,6 +1344,16 @@ class GameManager:
                                 continue
                             on = int(el / 0.1) % 2 == 0
                             wall_display[wi] = [255, 255, 255] if on else [0, 0, 0]
+
+                        if USE_SERIAL_HD and _hw_led_control is not None:
+                            try:
+                                _rc = led_table.led_row
+                                _cc = led_table.led_col
+                                _ld2 = [[floor_display[r * _cc + c] for c in range(_cc)] for r in range(_rc)]
+                                _hw_led_control.draw_screen_by_com(_hw_layout_type, _ld2)
+                                _hw_led_control.update_screen_state_by_com(_hw_layout_type, led_table.state_table, led_table.state_table)
+                            except Exception as _hw_err:
+                                logger.debug(f"HW I/O: {_hw_err}")
 
                         ppos = list(game.player_floor_pos) if game.player_floor_pos else None
                         game.update_state(

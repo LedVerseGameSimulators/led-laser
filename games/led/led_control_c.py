@@ -18,7 +18,7 @@ class LedControl:
         try:
             idx_com_name_start = com_info_str.index("(")
             idx_com_name_end = com_info_str.index(")")
-            com_name = com_info_str[(idx_com_name_start + 1)[:idx_com_name_end]]
+            com_name = com_info_str[idx_com_name_start + 1:idx_com_name_end]
             return com_name
         except:
             logger.debug("get_com_num exception")
@@ -117,7 +117,7 @@ class LedControl:
                 for com in list_com:
                     values = [
                      com[1], com[2]]
-                    array = one_array[(int(values[0]) - 1)[:int(values[1])]]
+                    array = one_array[int(values[0]) - 1:int(values[1])]
                     array_com_protocal = [255, 255]
                     for tuple in list(reversed(array)):
                         array_com_protocal.append(tuple[0])
@@ -156,7 +156,7 @@ class LedControl:
             for com in list_com:
                 values = [
                  com[1], com[2]]
-                array = m_led_color_one_array[(int(values[0]) - 1)[:int(values[1])]]
+                array = m_led_color_one_array[int(values[0]) - 1:int(values[1])]
                 array_com_protocal = [255, 255]
                 for tuple in list(reversed(array)):
                     array_com_protocal.append(tuple[0])
@@ -196,19 +196,19 @@ class LedControl:
                 logger.debug("{} read size {}", com.name, in_len)
             if in_len > 2:
                 if in_len >= read_size + 2:
-                    data_want = data_read_buffer[(in_len - (read_size + 2))[:None]]
+                    data_want = data_read_buffer[in_len - (read_size + 2):]
         else:
             data_want = data_read_buffer
         index_of_fc = data_want.index(252)
         start_fc_idx = index_of_fc + 2
-        arr_after_fc = data_want[start_fc_idx[:None]]
+        arr_after_fc = data_want[start_fc_idx:]
         len_arr_after_fc = len(arr_after_fc)
         last_num = start_num + read_size - 1
         for i in range(len_arr_after_fc):
             rst_arr[last_num - i] = arr_after_fc[i] == 10
 
         if index_of_fc > 0:
-            arr_before_fc = data_want[None[:index_of_fc]]
+            arr_before_fc = data_want[:index_of_fc]
             len_arr_before_fc = len(arr_before_fc)
             for i in range(len_arr_before_fc):
                 rst_arr[i + start_num] = arr_before_fc[len_arr_before_fc - i - 1] == 10
@@ -232,7 +232,7 @@ class LedControl:
                 index_of_fc = data_read_buffer.index(252)
                 start = index_of_fc + 2
                 end = index_of_fc + 2 + data_read_buffer[index_of_fc + 1]
-                data_rst = data_read_buffer[start[:end]]
+                data_rst = data_read_buffer[start:end]
                 tmp = src_idx_end - 1
                 for i in range(src_idx_start, src_idx_end):
                     one_array[i] = data_rst[tmp - i] == 10
@@ -313,7 +313,7 @@ class LedControl:
                 index_of_fc = data_read_buffer.index(252)
                 start = index_of_fc + 2
                 end = index_of_fc + 2 + data_read_buffer[index_of_fc + 1]
-                data_rst = data_read_buffer[start[:end]]
+                data_rst = data_read_buffer[start:end]
                 tmp = src_idx_end - 1
                 for i in range(src_idx_start, src_idx_end):
                     m_led_state_one_array[i] = data_rst[tmp - i] == 10
