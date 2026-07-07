@@ -97,34 +97,58 @@ python test_hardware.py
 
 ---
 
-## Step 7 — Start game server with hardware enabled
+## Step 7 — Install frontend dependencies
 
+```cmd
+cd C:\activerse\led-laser\frontend
+npm install
+```
+
+---
+
+## Step 8 — Start all 3 services
+
+**Option A — one command (recommended):**
+```cmd
+cd C:\activerse\led-laser
+scripts\start-dev.bat
+```
+Opens 3 separate windows: API, ws_bridge, Frontend.
+
+**Option B — three terminals manually:**
+
+Terminal 1 — API:
 ```cmd
 cd C:\activerse\led-laser
 set USE_SERIAL_HD=1
 python -m uvicorn api.main:app --host 0.0.0.0 --port 8001
 ```
+Expected: `Hardware ready: 3 port(s), 6×16, layout=X`
 
-**Expected startup log:**
-```
-Hardware ready: 3 port(s), 6×16, layout=X
+Terminal 2 — ws_bridge:
+```cmd
+cd C:\activerse\led-laser
+set API_PORT=8001
+set WS_BRIDGE_PORT=8768
+python ws_bridge.py
 ```
 
-**PowerShell:**
-```powershell
-$env:USE_SERIAL_HD="1"
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8001
+Terminal 3 — Frontend:
+```cmd
+cd C:\activerse\led-laser\frontend
+npm run dev
 ```
 
 ---
 
-## Step 8 — Verify sim + hardware
+## Step 9 — Verify sim + hardware
 
-1. Browser → `http://localhost:8001`
+1. Browser → `http://localhost:5174`
 2. Start a Laser Trap game
-3. Floor receives laser pattern (physical LEDs follow game state)
-4. Walking into a laser beam registers hit
-5. Wall lights respond to game events
+3. Simulator iframe renders corridor + 6×16 floor grid
+4. Floor receives laser pattern (physical LEDs follow game state)
+5. Walking into a laser beam registers hit
+6. Wall lights respond to game events
 
 ---
 
