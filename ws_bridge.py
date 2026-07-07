@@ -21,7 +21,7 @@ SIMULATOR_STATIC = str(Path(__file__).resolve().parent / "simulator" / "static")
 app.mount("/static", StaticFiles(directory=SIMULATOR_STATIC), name="static")
 
 HOST = "127.0.0.1"
-_DEFAULT_API_PORT = 8003
+_DEFAULT_API_PORT = 8001
 _DEFAULT_WS_PORT = 8768
 API_PORT = int(os.getenv("API_PORT", _DEFAULT_API_PORT))
 PORT = int(os.getenv("WS_BRIDGE_PORT", _DEFAULT_WS_PORT))
@@ -88,6 +88,31 @@ class GameBridge:
                     dead.add(ws)
             self.active_connections -= dead
 
+    async def broadcast_blank(self, rows: int, cols: int):
+        if not self.active_connections:
+            return
+        msg = json.dumps({
+            "type": "corridor_frame",
+            "wall_display": [],
+            "wall_slots": {"left": [], "right": []},
+            "dots_per_side": 7,
+            "goal_walls": [],
+            "player": None,
+            "floor": [[0, 0, 0]] * (rows * cols),
+            "rows": rows,
+            "cols": cols,
+            "fps": 30,
+            "game_id": None,
+        })
+        async with self.lock:
+            dead = set()
+            for ws in self.active_connections:
+                try:
+                    await ws.send_text(msg)
+                except Exception:
+                    dead.add(ws)
+            self.active_connections -= dead
+
 
 bridge = GameBridge()
 
@@ -108,6 +133,7 @@ async def status():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    client_game_id = ws.query_params.get("game_id")
     await bridge.connect(ws)
     async with httpx.AsyncClient() as client:
         try:
@@ -137,7 +163,7 @@ async def poll_game_state():
     async with httpx.AsyncClient() as client:
         while True:
             try:
-                resp = await client.get(f"{API_BASE_URL}/game-state", timeout=5)
+                resp = await client.get(f"{API_BASE_URL}/active-game", timeout=5)
                 data = resp.json()
                 if data.get("success"):
                     bridge.current_game_id = data["game_id"]
@@ -146,7 +172,8 @@ async def poll_game_state():
                 else:
                     bridge.current_game_id = None
                     bridge.game_state = {}
-                await asyncio.sleep(0.016)
+                    await bridge.broadcast_blank(6, 16)
+                await asyncio.sleep(0.033)
             except Exception as e:
                 print(f"Poll error: {e}")
                 await asyncio.sleep(1)

@@ -89,7 +89,8 @@ class GameUtil:
 
     
     def half_up(self, data):
-        return int(decimal.Decimal(data).quantize(decimal.Decimal('0'), decimal.ROUND_HALF_UP, **('rounding',)))
+        return int(decimal.Decimal(data).quantize(
+            decimal.Decimal('0'), rounding=decimal.ROUND_HALF_UP))
 
     
     def get_max_end_time_in_all_group(self, dict_group):

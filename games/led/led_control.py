@@ -1,10 +1,14 @@
 # uncompyle6 version 3.9.3
 # Python bytecode version base 3.7 (3394)
-# Decompiled from: Python 3.7.17 (default, Sep 20 2023, 11:59:52) 
+# Decompiled from: Python 3.7.17 (default, Sep 20 2023, 11:59:52)
 # [GCC 12.2]
 # Embedded file name: led_control.py
+import os
 import shelve, sys
 import encryption.yanqian as yanqian
+
+_GAMES_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DEBUG_PARAM = os.path.join(_GAMES_DIR, 'setting', 'debug_parameter')
 from led import communication, position_convert
 from loguru import logger
 import traceback
@@ -49,8 +53,8 @@ def init_com(list_com_info):
     list_com = []
     list_serial_open_error = []
     logger.info("init_com floor")
-    if yanqian():
-        f = shelve.open("./setting/debug_parameter")
+    if yanqian.yanqian():
+        f = shelve.open(_DEBUG_PARAM)
         com_is_block = f.get("com_is_block")
         f.close()
         logger.warning("串口阻塞{}", com_is_block)
@@ -116,7 +120,11 @@ def draw_screen_by_com(layout_type, logic_2array):
                 array = rect_position_arr[int(values[0]) - 1:int(values[1])]
                 array_com_protocal = [255, 255]
                 for coors in list(reversed(array)):
-                    tuple_color = logic_2array[coors[0]][coors[1]]
+                    ri, ci = coors[0], coors[1]
+                    if 0 <= ri < row and 0 <= ci < col:
+                        tuple_color = logic_2array[ri][ci]
+                    else:
+                        tuple_color = (0, 0, 0)
                     array_com_protocal.append(tuple_color[0])
                     array_com_protocal.append(tuple_color[1])
                     array_com_protocal.append(tuple_color[2])
@@ -171,16 +179,19 @@ def read(com, state_table, start_num, read_size=3, block=False):
         else:
             data_read_buffer = com.read_all()
     in_len = len(data_read_buffer)
+    if in_len == 0:
+        return
     if not in_len % (read_size + 2) != 0:
-        if in_len == 0:
-            logger.debug("{} read size {}", com.name, in_len)
         if in_len > 2:
             if in_len > read_size + 2:
                 data_want = data_read_buffer[in_len - (read_size + 2):]
                 in_len = read_size + 2
     else:
         data_want = data_read_buffer
-    index_of_fc = data_want.index(252)
+    try:
+        index_of_fc = data_want.index(252)
+    except ValueError:
+        return
     if index_of_fc < in_len - 2:
         start_fc_idx = index_of_fc + 2
         arr_after_fc = data_want[start_fc_idx:]

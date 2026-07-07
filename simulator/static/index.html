@@ -128,7 +128,8 @@
   <div id="log"></div>
 
   <script>
-    const WS_URL = `ws://${location.hostname}:${location.port || 8768}/ws`;
+    const _gameId = new URLSearchParams(location.search).get('game_id') || '';
+    const WS_URL = `ws://${location.hostname}:${location.port || 8768}/ws${_gameId ? '?game_id=' + _gameId : ''}`;
     const HOUSING = [0, 42, 0];
     const DOTS_DEFAULT = 7;
 
