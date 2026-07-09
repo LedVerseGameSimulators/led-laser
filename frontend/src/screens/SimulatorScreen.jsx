@@ -16,6 +16,7 @@ export default function SimulatorScreen({ config, onGameEnd }) {
   const audioCtxRef = useRef(null)
   const prevScoreRef = useRef(0)
   const prevLifeRef = useRef(null)
+  const startedRef = useRef(false)
 
   const beep = (freq, durMs, type = 'sine', gain = 0.15) => {
     try {
@@ -39,6 +40,8 @@ export default function SimulatorScreen({ config, onGameEnd }) {
 
   // Start game on mount (or resume an already-running game after reload)
   useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
     // Resuming: backend game already exists, don't start a new one.
     if (config.resumeGameId) {
       setGameId(config.resumeGameId)

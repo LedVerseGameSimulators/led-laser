@@ -394,7 +394,7 @@ class Play:
         return smer
 
     
-    def clear_led_table(self, color = (Color.BLACK,)):
+    def clear_led_table(self, color=Color.BLACK):
         # Unwrap tuple-wrapped color: (Color.BLACK,) -> Color.BLACK -> [0,0,0]
         c = color[0] if isinstance(color, tuple) and len(color) == 1 else color
         if isinstance(c, (list, tuple)):

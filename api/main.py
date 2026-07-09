@@ -459,6 +459,27 @@ async def startup():
     logger.info(f"Game: {GAME_NAME}")
 
 
+@app.get("/hw-debug")
+async def hw_debug():
+    """Live hardware loop diagnostics."""
+    import os as _os
+    games = []
+    for gid, g in game_manager.games.items():
+        games.append({
+            "game_id": gid,
+            "running": g.running,
+            "score": getattr(g, "score", 0),
+            "hw_draw_count": getattr(g, "_hw_draw_count", 0),
+            "last_hw_draw": getattr(g, "_hw_last_draw", 0),
+        })
+    return {
+        "use_serial_hd": _os.environ.get("USE_SERIAL_HD", "0") == "1",
+        "active_games": len(games),
+        "games": games,
+        "zombie_threads": game_manager.zombie_threads,
+    }
+
+
 @app.on_event("shutdown")
 async def shutdown():
     logger.info("API shutting down")

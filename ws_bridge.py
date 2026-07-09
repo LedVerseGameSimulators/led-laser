@@ -75,18 +75,27 @@ class GameBridge:
             "floor": floor,
             "rows": rows,
             "cols": cols,
+            "pressed": game_state.get("pressed_tiles", []),
             "fps": 60,
             "game_id": self.current_game_id,
         })
 
         async with self.lock:
-            dead = set()
-            for ws in self.active_connections:
-                try:
-                    await ws.send_text(msg)
-                except Exception:
-                    dead.add(ws)
-            self.active_connections -= dead
+            conns = list(self.active_connections)
+
+        async def _send(ws):
+            try:
+                await ws.send_text(msg)
+                return None
+            except Exception as e:
+                print(f"[ERR] Send error: {e}")
+                return ws
+
+        results = await asyncio.gather(*(_send(ws) for ws in conns), return_exceptions=False)
+        dead = {ws for ws in results if ws is not None}
+        if dead:
+            async with self.lock:
+                self.active_connections -= dead
 
     async def broadcast_blank(self, rows: int, cols: int):
         if not self.active_connections:
@@ -101,17 +110,25 @@ class GameBridge:
             "floor": [[0, 0, 0]] * (rows * cols),
             "rows": rows,
             "cols": cols,
+            "pressed": [],
             "fps": 30,
             "game_id": None,
         })
         async with self.lock:
-            dead = set()
-            for ws in self.active_connections:
-                try:
-                    await ws.send_text(msg)
-                except Exception:
-                    dead.add(ws)
-            self.active_connections -= dead
+            conns = list(self.active_connections)
+
+        async def _send_blank(ws):
+            try:
+                await ws.send_text(msg)
+                return None
+            except Exception:
+                return ws
+
+        results = await asyncio.gather(*(_send_blank(ws) for ws in conns), return_exceptions=False)
+        dead = {ws for ws in results if ws is not None}
+        if dead:
+            async with self.lock:
+                self.active_connections -= dead
 
 
 bridge = GameBridge()

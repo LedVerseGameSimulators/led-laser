@@ -186,6 +186,10 @@ def read(com, state_table, start_num, read_size=3, block=False):
             if in_len > read_size + 2:
                 data_want = data_read_buffer[in_len - (read_size + 2):]
                 in_len = read_size + 2
+            else:
+                data_want = data_read_buffer
+        else:
+            return
     else:
         data_want = data_read_buffer
     try:
@@ -198,7 +202,10 @@ def read(com, state_table, start_num, read_size=3, block=False):
         len_arr_after_fc = len(arr_after_fc)
         last_num = start_num + read_size - 1
         for i in range(len_arr_after_fc):
-            coors = rect_position_arr[last_num - i]
+            idx = last_num - i
+            if idx < 0 or idx >= len(rect_position_arr):
+                break
+            coors = rect_position_arr[idx]
             state_table[coors[0]][coors[1]] = arr_after_fc[i] == 10
 
     if index_of_fc > 0:
