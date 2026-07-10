@@ -1498,6 +1498,14 @@ class GameManager:
                     #    >10s left (score persists, HP refills). Exits on level
                     #    clear, session timeout, or true game-over (life=0, <10s).
                     while True:
+                        # Reload fresh every attempt (including the first) — dg's
+                        # groups are mutated in-place as targets are scored/consumed,
+                        # so reusing the same dg across a restart would replay with
+                        # already-scored targets missing instead of a clean board.
+                        dg, go = _load_level_file(lvl_path)
+                        if not dg:
+                            logger.warning(f"Level {lvl_id} failed to reload; aborting level")
+                            break
                         game.current_level_id = lvl_id
                         game.reset_for_level()      # clear board state (keep score/life)
                         _setup_level(dg, go)        # dict_group, board_time, zone, mp, anim
