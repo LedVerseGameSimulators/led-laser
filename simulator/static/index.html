@@ -279,7 +279,7 @@
 
     async function pollStats() {
       try {
-        const r = await fetch(`http://${location.hostname}:8003/game-state`);
+        const r = await fetch(`http://${location.hostname}:8001/game-state`);
         const d = await r.json();
         if (d.success && d.state) {
           document.getElementById('score').textContent = d.state.score ?? 0;
