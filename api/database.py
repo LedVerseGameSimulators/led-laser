@@ -1,7 +1,7 @@
 """
 Database Wrapper - MySQL connection and queries
 """
-from .config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
+from .config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, GAME_NAME
 from loguru import logger
 import sys
 import os
@@ -59,7 +59,7 @@ class Database:
                 """)
                 # Add columns if upgrading an older table (ignore if present).
                 for col, typ in (("lives_start", "INTEGER"), ("result", "INTEGER"),
-                                 ("score2", "INTEGER")):
+                                 ("score2", "INTEGER"), ("game", "TEXT")):
                     try:
                         con.execute(f"ALTER TABLE hex_scores ADD COLUMN {col} {typ}")
                     except Exception:
@@ -105,7 +105,7 @@ class Database:
                 con = self._scores_conn()
                 con.execute(
                     "INSERT INTO hex_scores (card_id, level, score, score2, life, "
-                    "lives_start, result, time_used, ts) VALUES (?,?,?,?,?,?,?,?,?)",
+                    "lives_start, result, time_used, ts, game) VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (
                         str(game_info.get("card_id", "")),
                         str(game_info.get("level", "")),
@@ -116,6 +116,7 @@ class Database:
                         game_info.get("result"),
                         float(game_info.get("time_used", 0.0)),
                         datetime.datetime.now().isoformat(timespec="seconds"),
+                        GAME_NAME,
                     ),
                 )
                 con.commit()
@@ -177,6 +178,24 @@ class Database:
             return [dict(r) for r in rows]
         except Exception as e:
             logger.error(f"Error getting leaderboard: {e}")
+            return []
+
+    def get_scores_since(self, since: str):
+        """Return scores recorded after `since` timestamp. Used by RFID poller."""
+        try:
+            with self._scores_lock:
+                con = self._scores_conn()
+                rows = con.execute(
+                    "SELECT card_id, level, score, score2, life, result, time_used, ts, game "
+                    "FROM hex_scores WHERE ts > ? ORDER BY ts ASC",
+                    (since,),
+                ).fetchall()
+                con.close()
+            return [dict(zip(
+                ["card_id", "level", "score", "score2", "life", "result", "time_used", "ts", "game"], r
+            )) for r in rows]
+        except Exception as e:
+            logger.error(f"Error getting scores since {since}: {e}")
             return []
 
     def close(self):

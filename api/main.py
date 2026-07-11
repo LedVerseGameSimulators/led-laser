@@ -257,6 +257,16 @@ async def health():
     }
 
 
+@app.get("/scores")
+async def get_scores(since: str = "2000-01-01T00:00:00"):
+    """Return scores recorded after `since` timestamp. Used by RFID poller."""
+    try:
+        rows = db.get_scores_since(since)
+        return {"success": True, "game": GAME_NAME, "scores": rows}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # ============= GAME SETTINGS ENDPOINT =============
 @app.get("/game-settings")
 async def get_game_settings():
