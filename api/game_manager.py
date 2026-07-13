@@ -141,6 +141,24 @@ def _hw_init():
         logger.error(f"Hardware init failed: {e}")
     return _hw_led_control
 
+
+def _hw_blank_floor(led_table=None):
+    """Send one all-black frame to the physical floor. Call at every game
+    end/stop path (session-end, stop_game, clear_all) so the hardware
+    doesn't stay stuck lit with the last drawn pattern after a game ends.
+    Uses the same draw call as normal gameplay frames, gated the same way.
+    """
+    if not (USE_SERIAL_HD and _hw_led_control is not None):
+        return
+    try:
+        rows = getattr(led_table, "led_row", None) or _HW_DEFAULT_ROWS
+        cols = getattr(led_table, "led_col", None) or _HW_DEFAULT_COLS
+        blank = [[0, 0, 0] for _ in range(cols)]
+        with _hw_serial_lock:
+            _hw_led_control.draw_screen_by_com(_hw_layout_type, [blank[:] for _ in range(rows)])
+    except Exception as e:
+        logger.warning(f"HW blank failed: {e}")
+
 # Will import after config is set
 # from game_play.Play import Play
 
@@ -1050,12 +1068,18 @@ class GameManager:
             for gid, g in list(self.games.items()):
                 g.running = False
             threads = [(gid, g.thread) for gid, g in self.games.items() if getattr(g, "thread", None)]
+            led_tables = [g.led_table for g in self.games.values() if getattr(g, "led_table", None) is not None]
             self.games.clear()
         for gid, t in threads:
             t.join(timeout=3.0)
             if t.is_alive():
                 logger.warning(f"Thread {gid} didn't stop in 3s — zombie")
                 self.zombie_threads.append(gid)
+        # Blank the physical floor so a stale frame doesn't linger from
+        # whichever game was just cleared out (kiosk model: clear_all()
+        # runs at the start of every new game via create_game()).
+        for lt in led_tables:
+            _hw_blank_floor(lt)
         logger.info("Cleared all existing games")
 
     def create_game(self, card_id: str, level: int, difficulty: str) -> str:
@@ -1501,6 +1525,7 @@ class GameManager:
                     game.update_state(game_over=True, game_over_reason="no_levels",
                                       time_left=0)
                     game.running = False
+                    _hw_blank_floor(led_table)
                     return
 
                 play.callback = _frame_callback
@@ -1608,6 +1633,9 @@ class GameManager:
                                   levels_cleared=game.levels_cleared,
                                   final_score=final_score, final_score2=final_score2)
                 game.running = False
+                # Session over (timer/lives/sequence end) — blank the
+                # physical floor; nothing else will draw to it now.
+                _hw_blank_floor(led_table)
 
             except Exception as e:
                 import traceback
@@ -1618,6 +1646,9 @@ class GameManager:
                     game_over=True,
                     game_over_reason=str(e)
                 )
+                # Best-effort blank even on a crash path; game.led_table
+                # may still be None if the crash happened before setup.
+                _hw_blank_floor(getattr(game, "led_table", None))
 
         game.running = True   # set synchronously — clear_all() won't skip this thread
         game._sim_pressed = set()
@@ -1633,6 +1664,10 @@ class GameManager:
         game.running = False
         if game.thread:
             game.thread.join(timeout=5)
+
+        # Manual stop (e.g. via /logout) — blank the physical floor so it
+        # doesn't stay lit with the last frame drawn before the stop.
+        _hw_blank_floor(getattr(game, "led_table", None))
 
         final_state = game.get_state()
 
