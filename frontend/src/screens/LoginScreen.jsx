@@ -67,7 +67,7 @@ export default function LoginScreen({ gameTitle = 'Game', onLogin, playerCount =
     if (mode === 'guest') {
       if (!guestName1.trim()) { setError('Enter Player 1 name'); return }
       if (playerCount === 2 && !guestName2.trim()) { setError('Enter Player 2 name'); return }
-      onLogin('', playerCount === 2 ? '' : null, guestName1.trim(), guestName2.trim())
+      onLogin('', playerCount === 2 ? '' : null, guestName1.trim(), guestName2.trim(), null, null)
       return
     }
     if (!card1.trim()) { setError('Scan Player 1 card'); return }
@@ -86,7 +86,11 @@ export default function LoginScreen({ gameTitle = 'Game', onLogin, playerCount =
         if (!d2.valid) { setP2Info(null); setError(`Player 2: ${validationError(d2)}`); return }
         setP2Info(d2)
       }
-      onLogin(card1.trim(), playerCount === 2 ? card2.trim() : null, d1.player_name || '', d2?.player_name || '')
+      onLogin(
+        card1.trim(), playerCount === 2 ? card2.trim() : null,
+        d1.player_name || '', d2?.player_name || '',
+        d1.minutes_remaining ?? null, d2?.minutes_remaining ?? null
+      )
     } catch {
       setError('Could not reach RFID server.')
     } finally {
