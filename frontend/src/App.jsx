@@ -123,16 +123,8 @@ export default function App() {
     groupRequestIdRef.current += 1
     clearGroupLoading()
 
-    if (mode === 'multi') {
-      setGameConfig(prev => ({
-        ...prev,
-        game: 'laser',
-        playMode: 'multi',
-        playerCount: 2,
-      }))
-      setScreen(S.SETTINGS)
-      return
-    }
+    // Laser has no multiplayer levels — Multi is not offered on landing.
+    if (mode === 'multi') return
 
     setGameConfig(prev => ({
       ...prev,
