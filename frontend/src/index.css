@@ -321,9 +321,12 @@ button:disabled {
 
 .mode-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Laser: Single + Group only (no multiplayer levels) */
+  grid-template-columns: repeat(2, 1fr);
   gap: 20px;
   width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
 }
 
 .mode-card {

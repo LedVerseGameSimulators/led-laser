@@ -1,15 +1,10 @@
+// Laser has no multiplayer (.ledb) levels — omit Multi from landing.
 const MODES = [
   {
     id: 'single',
     title: 'Single Player',
     desc: 'One player challenge',
     icon: '1',
-  },
-  {
-    id: 'multi',
-    title: 'Multiplayer',
-    desc: 'Two players head-to-head',
-    icon: '2',
   },
   {
     id: 'group',
