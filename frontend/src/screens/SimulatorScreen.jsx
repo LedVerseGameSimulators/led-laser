@@ -70,8 +70,9 @@ export default function SimulatorScreen({ config, onGameEnd }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             card_id: config.cardId,
-            level: config.level || 'A001',
-            difficulty: config.difficulty || 'normal'
+            level: config.playMode === 'group' ? (config.level || 'auto') : (config.level || 'A001'),
+            difficulty: config.difficulty || 'normal',
+            ...(config.playMode === 'group' ? { mode: 'group' } : {}),
           })
         })
         const data = await response.json()
