@@ -50,9 +50,7 @@ UI countdown and laser grid stay in sync.
 
 ---
 
-## Level clear (and timer expire)
-
-**Timer expire** uses the **same** animation as level clear.
+## Level clear (mid-session)
 
 Total animation **~2–3 s**, then **countdown**, then next level play.
 
@@ -66,7 +64,15 @@ Total animation **~2–3 s**, then **countdown**, then next level play.
 
 If more levels remain: clear animation → stinger → **countdown** → next level.
 
-After final level clear (session end) → all lasers **black / off** (**no** countdown).
+---
+
+## Timer expire (= session end)
+
+Same LED treatment as **level clear** (expanding-outward animation).
+
+1. Clear animation + ~2–3 s stinger (not BGM)
+2. All lasers **black / off**
+3. **No countdown** — session is over
 
 ---
 
