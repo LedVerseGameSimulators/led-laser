@@ -32,9 +32,10 @@ Global rules: [activerse_final_changes/docs/game-effects/GLOBAL_RULES.md](../../
 
 ---
 
-## Countdown (game start only)
+## Countdown (every level start)
 
-Runs **once** per session at game start. **Not** repeated on level change or level restart.
+Runs before **every level** — first level of the session, after level clear,
+and after level fail restart. **Not** repeated when the session has ended.
 
 ~**1 s per step**. Tick/noise audio; no BGM. Digits/letters rendered in **green dots** centered in the working area (cols 0–11).
 
@@ -53,7 +54,7 @@ UI countdown and laser grid stay in sync.
 
 **Timer expire** uses the **same** animation as level clear.
 
-Total animation **~2–3 s**, then next level directly (no countdown).
+Total animation **~2–3 s**, then **countdown**, then next level play.
 
 | Phase | Duration | Visual |
 |-------|----------|--------|
@@ -63,7 +64,9 @@ Total animation **~2–3 s**, then next level directly (no countdown).
 | 4 | ~0.4 s | All working lasers **ON** |
 | 5 | ~1–1.5 s | Hold full matrix |
 
-After final level clear (session end) → all lasers **black / off**.
+If more levels remain: clear animation → stinger → **countdown** → next level.
+
+After final level clear (session end) → all lasers **black / off** (**no** countdown).
 
 ---
 
@@ -71,7 +74,7 @@ After final level clear (session end) → all lasers **black / off**.
 
 Triggered when **all lives are lost**.
 
-Total animation **~2–3 s**, then same level restart directly (no countdown).
+Total animation **~2–3 s**, then **countdown**, then same level restart play.
 
 | Phase | Duration | Visual |
 |-------|----------|--------|
