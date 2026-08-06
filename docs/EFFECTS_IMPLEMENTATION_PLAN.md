@@ -4,6 +4,8 @@
 **Spec:** [EFFECTS_SPEC.md](./EFFECTS_SPEC.md) · **Global rules:** [GLOBAL_RULES.md](../../docs/game-effects/GLOBAL_RULES.md) · **Locked decisions:** [LOCKED_DECISIONS.md](../../docs/game-effects/LOCKED_DECISIONS.md)  
 **Flow diagram:** [assets/laser-effects-flows.png](./assets/laser-effects-flows.png)
 
+**Testing / TDD (locked #13, mandatory):** [docs/game-effects/TESTING_CONTRACT.md](../../docs/game-effects/TESTING_CONTRACT.md) — red→green→refactor via API; prove `phase` / `accepting_input` inside the marathon loop; Layer B smoke with FE + sim. No merge without green `tests/test_effects_session_loop.py`.
+
 ---
 
 ## Plan review (2026-08-07)
@@ -483,6 +485,9 @@ Never light cols 12–15. Optionally add no-op groups there — better to omit e
 | `scripts/build_effect_led.py` | JSON → `.led` builder |
 | `scripts/validate_effect_led.py` | Load/duration/bounds checks |
 | `scripts/smoke_effects.py` | Headless play each effect, dump frame count |
+| `tests/test_effects_session_loop.py` | **TDD gate** — T1–T8 via API (see §9) |
+| `tests/fixtures/effects/` | Tiny `.led` fixtures for fast marathon tests (optional env override) |
+| `tests/test_audio_manager.py` | Non-blocking smoke tests (T9) |
 
 ### 5.2 Modified files
 
@@ -529,6 +534,8 @@ Never light cols 12–15. Optionally add no-op groups there — better to omit e
 
 ## 7. Test plan
 
+**Primary gate:** §9 TDD / verification — `pytest tests/test_effects_session_loop.py -q` must pass before merge. Manual checks below supplement Layer B smoke and HW validation.
+
 ### 7.1 Unit / script tests
 
 - [ ] `validate_effect_led.py` passes for all three files
@@ -536,49 +543,146 @@ Never light cols 12–15. Optionally add no-op groups there — better to omit e
 - [ ] `countdown.led` duration 4.5–5.5 s; labels at 0.5, 1.5, 2.5, 4.0 s correct
 - [ ] `level_clear.led` / `level_fail.led` duration ~2–3 s
 
-### 7.2 Integration (headless API)
-
-- [ ] Start session → observe `phase`: countdown → playing → (mock clear) → countdown → playing
-- [ ] Clear last wall target → `level_clear` → countdown → next level id in state
-- [ ] Drain lives with time left → `level_fail` → stinger → countdown → same level id, life refilled
-- [ ] Board-time level end (`total_pass > board_time_sec`) → clear path → countdown → next level
-- [ ] Let timer expire → `level_clear.led` → stinger → `session_end` → `game_over`, **no** countdown phase after clear
-- [ ] Life=0 with ≤10 s left → `level_clear.led` only (no `level_fail.led`), then `session_end`
-- [ ] Last level cleared → `level_clear.led` → stinger → `session_end` (no countdown even if time remains)
-- [ ] BGM: verify `start_bgm` only when `phase=playing` (log markers)
-- [ ] Score SFX: positive/negative MP3 fire on score/life change during gameplay only; frontend synth muted when backend active
-- [ ] Wall input ignored when `accepting_input=False` during countdown/level_clear/level_fail
-
-### 7.3 Frontend
-
-- [ ] Simulator overlay shows 3-2-1-GO in ~sync with `countdown_label` polling
-- [ ] UI countdown and floor countdown both visible on level 1 and after transitions
-
-### 7.4 Hardware / sim
-
-- [ ] `USE_SERIAL_HD=1`: patterns visible on 6×16 floor; cols 12–15 stay dark
-- [ ] ws_bridge simulator receives `floor_display` during countdown phases
-- [ ] Session stop → floor blanks
-
-### 7.5 Reference media
+### 7.2 Reference media
 
 - [ ] Side-by-side with `~/Downloads/Laser Escape/` capture — adjust phase timings in JSON source if pace feels off
 
 ---
 
-## 8. Implementation order
+## 8. Implementation order (TDD-first)
 
-1. **Author `.led` files** (JSON builder + validate script) — can parallel with audio setup
-2. **`effects_runner` + `_play_effect_led`** — headless, no audio
-3. **Marathon loop hooks** — phase publishing
-4. **`AudioManager`** — wire BGM/stinger/tick
-5. **Frontend overlay** — add per-level countdown in `SimulatorScreen` (keep pre-session `CountdownScreen`)
-6. **HW smoke** — full session on sim + serial
-7. **Tune timings** against reference media
+1. **Red:** Create `tests/test_effects_session_loop.py` with failing T1 + T7 + T8 (see §9 pre-marathon checklist)
+2. Author three effect `.led` files + `validate_effect_led.py` (short fixtures under `tests/fixtures/effects/` for tests)
+3. **Green:** `_play_effect_led()` + marathon loop wiring until T1/T7/T8 pass
+4. **Red:** Failing T2 + T3 → **Green:** clear/fail panels + countdown-between-levels
+5. **Red:** Failing T4 + T5 + T6 → **Green:** `_run_session_end_clear()` / session-end paths
+6. `AudioManager` + shared `transition_stinger.mp3` + BGM/tick/score SFX boundaries (T9 in `test_audio_manager.py`)
+7. State fields (`phase`, `accepting_input`, `countdown_label`) + `SimulatorScreen` per-level overlay
+8. **Layer B** smoke — API + FE/sim via `scripts/start-dev.sh`; fix until panels visible in real loop
+9. HW validation (`USE_SERIAL_HD=1`)
+10. Tune level-1 UI + backend countdown ~sync; reference media timing
 
 ---
 
-## 9. Out of scope (this plan)
+## 9. TDD / verification (locked #13)
+
+**Contract:** [docs/game-effects/TESTING_CONTRACT.md](../../docs/game-effects/TESTING_CONTRACT.md) — mandatory for merge. Effects work is **not done** until automated tests prove behavior runs **inside the marathon loop**, exercised through the **API**, and spot-checked with **frontend + simulator**.
+
+### Required test module
+
+`tests/test_effects_session_loop.py` — one dedicated module covering **T1–T8** from [TESTING_CONTRACT.md §2](../../docs/game-effects/TESTING_CONTRACT.md#2-what-must-be-proven). T9 lives in `tests/test_audio_manager.py`.
+
+| Contract ID | Scenario | Assert via API (`GET /game-state`) |
+|-------------|----------|-------------------------------------|
+| **T1** | Session start | After `POST /start-game`, poll until `phase=countdown` (or brief transition) then `phase=playing` with `accepting_input=true` |
+| **T2** | Countdown every level | Mid-session clear → next level: `phase` goes `level_clear` → `countdown` → `playing` (not straight into gameplay) |
+| **T3** | Level fail restart | Force life=0 with **>10 s** left → `phase=level_fail` → `countdown` → `playing` on **same** level; score preserved |
+| **T4** | Session end (timer) | Timer expire → `phase=level_clear` or `session_end` → floor blank; **no** subsequent `countdown` |
+| **T5** | Session end (life ≤10 s) | Life=0 with **≤10 s** left → clear path (not fail panel) → black; no countdown |
+| **T6** | Last level cleared | Clear final level → session end (clear → black); no countdown |
+| **T7** | Input gating | While `accepting_input=false` (countdown / clear / fail), `POST /game-input` (wall or floor) does **not** change score / life |
+| **T8** | Playing accepts input | During `phase=playing`, valid wall or floor press **does** affect score or life — proves effects did not break gameplay |
+
+**How to run (Layer A — required, CI-friendly):**
+
+- Start FastAPI in-process (`TestClient` / `httpx.ASGITransport`) **or** spawn uvicorn on a free port.
+- Sim mode (`USE_SERIAL_HD=0` or unset).
+- Drive `POST /start-game`, poll `GET /game-state` (or `/game-state/{game_id}`) for `phase`, `accepting_input`, `countdown_label`, `life`, `score`, `current_level`; send `POST /game-input` during gated vs playing phases.
+- Use short effect `.led` fixtures under `tests/fixtures/effects/` (tiny `board_time`) or env override so tests finish in seconds.
+- **Prove fail / clear / countdown happen inside the marathon loop** — not via isolated mocks of `Play.running` alone.
+
+```bash
+cd led-laser
+pytest tests/test_effects_session_loop.py -q   # merge gate
+pytest tests/test_audio_manager.py -q          # T9 bar
+```
+
+### Layer B — API + frontend + simulator (required smoke)
+
+Manual or scripted smoke before merge (Laser has no `ws_bridge`; state flows via `/game-state` poll in `SimulatorScreen`):
+
+1. Start API + frontend (`scripts/start-dev.sh`).
+2. Guest login → start session.
+3. Watch simulator / floor display in `SimulatorScreen`:
+   - Countdown pattern on floor before play (3-2-1-GO greens on 6×12 working area)
+   - Gameplay LEDs + wall/floor scoring works
+   - Trigger fail (drain lives, >10 s left) → fail panel → countdown → same level
+   - Or clear all wall targets / board-time advance → clear panel → next countdown or session black
+4. Confirm UI countdown overlay and floor stay roughly in sync via `phase` / `countdown_label`; UI shows playing when `phase=playing`.
+
+```bash
+cd led-laser
+./scripts/start-dev.sh
+# Optional: extend parent scripts/hw_mode_smoke_test.py / full_hw_sim_smoke.py with phase checks
+```
+
+### Layer C — Frontend checklist
+
+- [ ] `SimulatorScreen`: scoring clicks ignored/disabled when backend `phase` is `countdown` / `level_clear` / `level_fail`
+- [ ] Per-level countdown overlay driven by `countdown_label` (`"3"|"2"|"1"|"GO"`) on levels 2+
+- [ ] Synth score/hurt beeps **muted** when backend `AudioManager` active (locked #10)
+- [ ] No crash when `phase` / `countdown_label` / `accepting_input` appear on `/game-state`
+
+Automated FE tests are nice-to-have; **Layer A + B** are the merge gate.
+
+### Red→green task order (TESTING_CONTRACT §4)
+
+Follow this order — **write failing tests before wiring each marathon hook**:
+
+1. [ ] **Red:** Add failing tests for **T1 + T7 + T8** (countdown → playing + input gate + gameplay still scores)
+2. [ ] **Green:** Implement `_play_effect_led()` + marathon hooks until T1/T7/T8 pass
+3. [ ] **Red:** Add failing tests for **T2, T3** (clear / fail loops inside marathon)
+4. [ ] **Green:** Implement clear/fail panels + countdown-between-levels
+5. [ ] **Red:** Add failing tests for **T4, T5, T6** (session end paths)
+6. [ ] **Green:** Implement `_run_session_end_clear()` / session-end paths
+7. [ ] **Red:** Add failing T9 tests in `test_audio_manager.py` (non-blocking; no `get_busy` on game thread)
+8. [ ] **Green:** Wire `AudioManager` — BGM/stinger/tick/score SFX
+9. [ ] Run **Layer B** smoke; fix until sim shows panels inside the real loop
+10. [ ] Note smoke date/result in commit message or plan
+
+**Do not** land marathon wiring without tests that would fail on the pre-effects codebase.
+
+### Pre-marathon wiring checklist (write tests FIRST)
+
+- [ ] Create `tests/test_effects_session_loop.py` skeleton + pytest fixtures (`TestClient`, short session config)
+- [ ] **Red:** T1 — session start reaches `phase=playing` with `accepting_input=true`
+- [ ] **Red:** T7 — input blocked during `phase=countdown` / `level_clear` / `level_fail` (wall + floor via `/game-input`)
+- [ ] **Red:** T8 — valid input works during `phase=playing`
+- [ ] Confirm all three fail on current codebase → **then** begin §3 marathon wiring
+
+### Additional regression tests (same module or helpers)
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 9 | Board-time level advance | `total_pass > board_time_sec` → clear path → countdown → next level |
+| 10 | Outer-loop timeout | `session_elapsed > game_time_sec` at loop top → `_run_session_end_clear()` before break |
+| 11 | Score SFX | Positive/negative MP3 fire on score/life change during `playing` only; not during effect phases |
+| 12 | BGM lifecycle | `start_bgm` only when `phase=playing`; stopped before clear/fail/countdown |
+| 13 | Stop mid-countdown | Input locked; clean stop; floor blank |
+| 14 | Rapid fail restart (3×) | Each cycle: fail → countdown → replay; BGM never overlaps stinger |
+
+### Hardware (`USE_SERIAL_HD=1`) — post-merge validation
+
+| # | Check |
+|---|-------|
+| 1 | Countdown greens on 6×16 floor; cols 12–15 stay dark |
+| 2 | Clear expanding `+` pattern; fail flicker/collapse; hold ~2–3 s |
+| 3 | Timer expire → clear hold → all off |
+| 4 | BGM audible only during gameplay; silent during countdown/transitions |
+| 5 | Shared stinger audible on clear/fail; no hang on game thread |
+| 6 | Session stop / logout blanks floor (`_hw_blank_floor`) |
+
+### Definition of done
+
+- [ ] `tests/test_effects_session_loop.py` covers T1–T8; pytest green in sim mode
+- [ ] `tests/test_audio_manager.py` covers T9; pytest green
+- [ ] Layer B smoke documented and run once
+- [ ] `/game-state` exposes `phase` + `accepting_input` during live session
+- [ ] Gameplay still scores/loses life during `playing` (T8 regression)
+
+---
+
+## 10. Out of scope (this plan)
 
 - Idle/attract video (`game_idle_video`)
 - Per-level embedded mp3 inside `.led` zips (use global audio manager instead)
@@ -588,7 +692,7 @@ Never light cols 12–15. Optionally add no-op groups there — better to omit e
 
 ---
 
-## 10. References
+## 11. References
 
 | Doc | Path |
 |-----|------|
@@ -601,3 +705,8 @@ Never light cols 12–15. Optionally add no-op groups there — better to omit e
 | Playback engine | `games/game_play/Play.py` |
 | Group model | `games/model/group.py` |
 | Legacy audio (blocking — avoid) | `games/game_play/game_music.py` |
+| Testing / TDD contract | `docs/game-effects/TESTING_CONTRACT.md` |
+
+---
+
+*Plan only — no runtime code changes in this commit.*
