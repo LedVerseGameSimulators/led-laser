@@ -2,12 +2,19 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
+GAMES_ROOT = REPO / "games"
+for _path in (REPO, GAMES_ROOT):
+    _s = str(_path)
+    if _s not in sys.path:
+        sys.path.insert(0, _s)
+
 FIXTURES = REPO / "tests" / "fixtures"
 EFFECTS = FIXTURES / "effects"
 LEVELS = FIXTURES / "levels"
