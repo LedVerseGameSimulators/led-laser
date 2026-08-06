@@ -160,9 +160,13 @@ export default function SimulatorScreen({ config, onGameEnd }) {
         const data = await response.json()
         if (data.success) {
           const st = data.state
-          // Sound cues on score gain / life loss
-          if (st.score > prevScoreRef.current) playScore()
-          if (prevLifeRef.current !== null && st.life < prevLifeRef.current) playHurt()
+          const backendAudio = st.backend_audio_active
+          const inPlaying = st.phase === 'playing'
+          // Sound cues on score gain / life loss — mute when backend audio active
+          if (inPlaying && !backendAudio) {
+            if (st.score > prevScoreRef.current) playScore()
+            if (prevLifeRef.current !== null && st.life < prevLifeRef.current) playHurt()
+          }
           prevScoreRef.current = st.score
           prevLifeRef.current = st.life
 
@@ -214,6 +218,10 @@ export default function SimulatorScreen({ config, onGameEnd }) {
   const p1Name = config.playerName || 'Player 1'
   const p2Name = config.playerName2 || 'Player 2'
   const currentLevel = gameState?.current_level ?? config.level
+  const phase = gameState?.phase
+  const countdownLabel = gameState?.countdown_label
+  const inputLocked = gameState?.accepting_input === false ||
+    (phase && phase !== 'playing')
 
   return (
     <div className="simulator-container">
@@ -262,7 +270,7 @@ export default function SimulatorScreen({ config, onGameEnd }) {
                 <span className="hud-level">Level {currentLevel}</span>
                 <span className="hud-diff">{config.difficulty?.toUpperCase()}</span>
                 <span className={`hud-status ${isOver ? 'ended' : 'playing'}`}>
-                  {isOver ? '● ENDED' : '● PLAYING'}
+                  {isOver ? '● ENDED' : phase === 'countdown' ? '● COUNTDOWN' : '● PLAYING'}
                 </span>
               </div>
 
@@ -319,6 +327,14 @@ export default function SimulatorScreen({ config, onGameEnd }) {
           </div>
         )}
       </div>
+
+      {phase === 'countdown' && countdownLabel && (
+        <div className="sim-countdown-overlay" aria-live="polite">
+          <div className={`countdown-num ${countdownLabel === 'GO' ? 'go' : ''}`}>
+            {countdownLabel}
+          </div>
+        </div>
+      )}
 
       {(config.playerName || config.playerName2) && (
         <div className="sim-player-bar">
