@@ -53,6 +53,48 @@ All open questions resolved — implement against [LOCKED_DECISIONS.md](../../do
 
 ---
 
+## Gap analysis (2026-08-07)
+
+**Verdict:** **Ready with refinements** — plan matches [LOCKED_DECISIONS.md](../../docs/game-effects/LOCKED_DECISIONS.md) and [EFFECTS_SPEC.md](./EFFECTS_SPEC.md); `game_manager.py` spot-check confirms audit claims. Refinements below close internal contradictions and missing integration hooks; no blockers remain for implementation.
+
+**Spot-check (`api/game_manager.py`):** Marathon uses outer `for lvl_path` + inner `while True` restart loop (L1610–1683). Life=0 with >10 s → `_restart_level` + `continue` (L1367–1373, L1661–1677). Life=0 with ≤10 s → `_session_over` (L1374–1376). Timer expire → `_session_over` / `result=2` (L1377–1379). Board-time advance → `_level_cleared` (L1384–1386). All-wall-cleared → `_level_cleared` (L1459–1463). No `phase` / `accepting_input` in `update_state()` (L1556–1581). `pygame` / `audio_play` mocked at import (L73–76). Session end blanks floor only — no effect `.led` hooks (L1714–1716). `apply_input` / `apply_floor_input` accept presses unconditionally (L1063–1098).
+
+### Gaps
+
+| ID | Severity | Gap | Resolution |
+|----|----------|-----|------------|
+| G1 | **High** | §8 step 5 said “remove duplicate countdown” — contradicts locked decision #4 (UI + floor both run). | **Fixed:** keep pre-session `CountdownScreen`; add per-level overlay in `SimulatorScreen`. |
+| G2 | **High** | Input gating plan named `press_wall` but API entry points are `apply_input` / `apply_floor_input`. | **Fixed:** guard both methods on `accepting_input` and `phase != "playing"`. |
+| G3 | **Medium** | Outer-loop timeout break (before level load) skips session-end clear effect. | **Fixed:** call `_run_session_end_clear()` when `session_elapsed > game_time_sec` at loop top. |
+| G4 | **Medium** | Shared ± score SFX paths vague (“cross-game MP3”). | **Fixed:** recommend `games/audio/score_positive.mp3`, `games/audio/score_negative.mp3` (symlink from parent pack). |
+| G5 | **Medium** | §5.2 listed `ws_bridge.py` — not present in led-laser repo. | **Fixed:** removed; state flows via existing `/game-state` poll in `SimulatorScreen`. |
+| G6 | **Medium** | §4.2 digit anchor still “col ~5–6” while spec locks **col 6**. | **Fixed:** anchor digits at col 6. |
+| G7 | **Low** | BGM lives under `games/audio_play/` (legacy) vs cross-game `games/audio/` convention. | **Fixed:** document symlink or copy into `games/audio/bgm_laser.mp3`; keep setting override. |
+| G8 | **Low** | Optional `countdown_label` strings vs cross-game `countdown_step` int — not in locked minimum (`phase` + `accepting_input` only). | **Accepted:** Laser keeps `countdown_label` for UI; locked fields unchanged. |
+| G9 | **Low** | [EFFECTS_SPEC.md](./EFFECTS_SPEC.md) omits life=0 ≤10 s → clear (not fail) and last-level session-end. | **Human open:** spec doc update (plan + locked decisions cover behavior). |
+| G10 | **Low** | Stinger is fire-and-forget; hold-last-frame duration unspecified. | **Fixed:** `_hold_last_frame(STINGER_HOLD_SEC)` (~2.5 s, 10 ms republish loop). |
+
+**Severity counts:** Blocker **0** · High **2** (fixed in plan) · Medium **4** (fixed in plan) · Low **4** (2 fixed, 2 human opens)
+
+### Refinements applied (this pass)
+
+- §3.3: outer-loop timeout → `_run_session_end_clear()` before break.
+- §3.5 / §5.3: concrete shared SFX paths; BGM symlink note.
+- §4.2: digit anchor col **6** only.
+- §5.2: `apply_input` / `apply_floor_input` gating; drop `ws_bridge.py`.
+- §8: implementation order step 5 → per-level overlay (not remove countdown).
+- §3.2 / §3.5: `STINGER_HOLD_SEC = 2.5`; `_hold_last_frame()` republish loop (no `get_busy()`).
+
+### Remaining human opens
+
+1. **Author effect `.led` files** — no `games/source/effects/` yet; bootstrap via `scripts/build_effect_led.py`.
+2. **Shared score SFX asset pack** — copy or symlink positive/negative MP3s into `games/audio/`.
+3. **Stinger + tick final assets** — stock placeholder OK per global rules; tune against `~/Downloads/Laser Escape/`.
+4. **EFFECTS_SPEC.md sync** — add life=0 ≤10 s and last-level-cleared session-end bullets to match locked decisions.
+5. **pygame un-mock strategy** — conditional real import when HW/sim audio enabled vs CI unit-test mock.
+
+---
+
 ## 1. Executive summary
 
 Wire marathon session transitions through **authored `.led` mini-levels** (`countdown.led`, `level_clear.led`, `level_fail.led`) using the **same load + `Play.running()` path** as gameplay. Add a **non-blocking `AudioManager`** (BGM only during active level play; tick/stinger/SFX otherwise). Sync the React UI countdown with floor patterns via published **`phase`** and **`accepting_input`** in game state.
@@ -179,6 +221,7 @@ def _play_effect_led(path, led_table, play, publish_cb, *, scoring=False, accept
 
 - No `vary_with_color_state`, no `score_wall_light_groups`, no level-clear detection.
 - Set `game.accepting_input = False` for entire effect; restore `True` only when gameplay starts.
+- Guard `apply_input()` and `apply_floor_input()` — ignore presses when `accepting_input` is False.
 - Still call `redraw_led_table_default` + HW draw (`_hw_led_control.draw_screen_by_com`) so sim/HW see patterns.
 - Map `total_pass` → `countdown_label` (`"3"|"2"|"1"|"GO"`) during `countdown.led` (see §4.2).
 - Mirror gameplay pacing (`time.sleep(0.01)` in callback) so `total_pass` timing matches authored windows.
@@ -213,6 +256,7 @@ def _run_fail():
 
 def _run_stinger():
     audio.play_stinger("games/audio/transition_stinger.mp3")  # non-blocking; shared clear+fail
+    _hold_last_frame(STINGER_HOLD_SEC)  # republish last effect frame ~2.5s; 10ms pacing only
 
 def _run_session_end_clear():
     _run_clear()  # includes stinger; no countdown after
@@ -225,10 +269,15 @@ for lvl_path in game.level_sequence:
     if session_time_remaining() <= 0:
         game._session_over = True
         game._end_reason = "timeout"
+        _run_session_end_clear()  # level_clear.led + stinger + black before break
         break
 
     while True:  # restart loop — same level on fail
         if game._session_over or session_time_remaining() <= 0:
+            if session_time_remaining() <= 0 and not game._session_over:
+                game._session_over = True
+                game._end_reason = "timeout"
+                _run_session_end_clear()
             break
 
         _run_countdown()
@@ -306,17 +355,17 @@ for lvl_path in game.level_sequence:
 - Game thread **never** calls `get_busy()` + spin loop.
 - Stop BGM **before** level_clear/level_fail/countdown effects.
 - Start BGM **after** countdown effect completes, **before** gameplay `Play.running()`.
-- During stinger (while still in `level_clear` / `level_fail` phase), **hold the last effect frame** on floor/HW (re-publish final `floor_display`) until session goes `session_end`.
+- During stinger (while still in `level_clear` / `level_fail` phase), **hold the last effect frame** on floor/HW via `_hold_last_frame(STINGER_HOLD_SEC)` (~2.5 s, 10 ms republish loop — not `get_busy()`).
 - In headless/sim-only mode (`USE_SERIAL_HD=0` and no pygame): audio no-op with debug log; frontend Web Audio may mirror tick/score optionally when backend audio inactive.
 
 **Asset paths (locked):**
 
 | Asset | Path |
 |-------|------|
-| BGM | `games/audio_play/squid_game_remix.mp3` (or setting override) |
-| Positive SFX | Shared cross-game MP3 |
-| Negative SFX | Shared cross-game MP3 |
-| Countdown tick | Stock tick/noise MP3 |
+| BGM | `games/audio/bgm_laser.mp3` (symlink/copy from `games/audio_play/squid_game_remix.mp3`; setting override OK) |
+| Positive SFX | `games/audio/score_positive.mp3` (shared; symlink from parent asset pack) |
+| Negative SFX | `games/audio/score_negative.mp3` (shared; symlink from parent asset pack) |
+| Countdown tick | `games/audio/countdown_tick.mp3` (stock placeholder OK) |
 | Transition stinger | `games/audio/transition_stinger.mp3` — **one shared file** for clear and fail |
 
 ---
@@ -362,7 +411,7 @@ Align with EFFECTS_SPEC + diagram (`laser-effects-flows.png`):
 | 3 | 2.0 – 3.0 | Digit **1** | ~1 s |
 | 4 | 3.0 – 5.0 | Letters **G** + **O** side by side | ~1.5–2 s |
 
-**Digit bitmap authoring:** Use diagram coordinates. Example anchor: center col ~5–6, row 3. Each digit is a set of 8–20 cells. Author in level editor or Python builder script.
+**Digit bitmap authoring:** Use diagram coordinates. Anchor center at **row 3, col 6**. Each digit is a set of 8–20 cells. Author in level editor or Python builder script.
 
 **Backend sync helper:**
 
@@ -439,14 +488,13 @@ Never light cols 12–15. Optionally add no-op groups there — better to omit e
 
 | File | Changes |
 |------|---------|
-| `api/game_manager.py` | Phase state machine; call effects before/after gameplay; `accepting_input` gating; un-mock audio when available; publish `phase`, `accepting_input`, `countdown_label` in state `data`; BGM + score SFX lifecycle |
+| `api/game_manager.py` | Phase state machine; call effects before/after gameplay; `accepting_input` gating on `apply_input` / `apply_floor_input`; un-mock audio when available; publish `phase`, `accepting_input`, `countdown_label` in state `data`; BGM + score SFX lifecycle; `STINGER_HOLD_SEC` |
 | `api/models.py` | Document `phase`, `accepting_input`, `countdown_label`, `transition_reason` in `GameState.data` schema comment (fields flow via dict, not new Pydantic attrs) |
 | `api/main.py` | Pass through new state fields (automatic if dict-based) |
 | `frontend/src/App.jsx` | Keep pre-session countdown; ensure per-level overlay sync via `phase` |
 | `frontend/src/screens/SimulatorScreen.jsx` | Countdown overlay from `phase`; mute synth when backend audio active |
 | `frontend/src/index.css` | Overlay styles for in-sim countdown |
-| `ws_bridge.py` | Forward new state fields to simulator iframe |
-| `simulator/static/index.html` | Show phase if needed on HW sim |
+| `simulator/static/index.html` | Show phase if needed on HW sim (if present) |
 | `docs/STATUS.md` | Mark effects implemented |
 | `docs/GAPS.md` | Close end-fragment gap |
 
@@ -454,10 +502,10 @@ Never light cols 12–15. Optionally add no-op groups there — better to omit e
 
 | Item | Action |
 |------|--------|
-| BGM MP3 | Add or symlink Squid Game remix |
-| Shared ± score SFX | Copy from cross-game asset pack |
+| BGM MP3 | Symlink/copy to `games/audio/bgm_laser.mp3` from Squid Game remix |
+| Shared ± score SFX | `games/audio/score_positive.mp3`, `games/audio/score_negative.mp3` |
 | Stinger | `games/audio/transition_stinger.mp3` (shared clear+fail) |
-| Tick | Stock placeholder until final |
+| Tick | `games/audio/countdown_tick.mp3` (stock placeholder until final) |
 | `led_parameter` | No layout change (6×16 confirmed) |
 
 ---
@@ -467,7 +515,7 @@ Never light cols 12–15. Optionally add no-op groups there — better to omit e
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | **UI + floor countdown sync** | Medium | Both run per locked decision; backend `.led` drives floor; UI overlay follows `phase` / `countdown_label` |
-| **Input during transitions** | High | `accepting_input=False` on all non-`playing` phases; guard `press_wall` / sim handlers |
+| **Input during transitions** | High | `accepting_input=False` on all non-`playing` phases; guard `apply_input` / `apply_floor_input` |
 | **Blocking audio freezes floor** | High | Code review ban on `waitting_music_end` / `get_busy` loops in game thread |
 | **pygame mocked in API** | High | Conditional import: real `AudioManager` when pygame installed; mock only in CI unit tests |
 | **Effect duration drift** | Medium | Author with `end_time_sec` margins; validate with smoke script; tune against reference MP4 |
@@ -524,7 +572,7 @@ Never light cols 12–15. Optionally add no-op groups there — better to omit e
 2. **`effects_runner` + `_play_effect_led`** — headless, no audio
 3. **Marathon loop hooks** — phase publishing
 4. **`AudioManager`** — wire BGM/stinger/tick
-5. **Frontend overlay** — remove duplicate countdown
+5. **Frontend overlay** — add per-level countdown in `SimulatorScreen` (keep pre-session `CountdownScreen`)
 6. **HW smoke** — full session on sim + serial
 7. **Tune timings** against reference media
 
