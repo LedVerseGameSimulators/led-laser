@@ -2,17 +2,21 @@ import { useEffect, useState, useRef } from 'react'
 
 import { API_URL, WS_BRIDGE_URL } from '../config'
 
-function HeartRow({ life, maxLife }) {
-  // Cap visual hearts (backend display_max is typically 5)
-  const total = Math.max(1, Math.min(10, Math.round(maxLife) || 5))
-  const filled = Math.max(0, Math.min(total, Math.round(life)))
-  return (
-    <div className="hud-hearts" aria-label={`${filled} of ${total} lives`}>
-      {Array.from({ length: total }, (_, i) => (
-        <span key={i} className={`hud-heart ${i < filled ? 'filled' : 'empty'}`}>♥</span>
-      ))}
-    </div>
-  )
+function countdownDisplay(state) {
+  if (state?.phase !== 'countdown') return null
+  const label = state.countdown_label
+  if (label === 'GO') return 'GO!'
+  return label != null ? String(label) : null
+}
+
+function isInputBlocked(state) {
+  if (!state) return true
+  if (state.accepting_input === false) return true
+  return state.phase && state.phase !== 'playing'
+}
+
+function showPhaseOverlay(state) {
+  return ['countdown', 'level_clear', 'level_fail'].includes(state?.phase)
 }
 
 export default function SimulatorScreen({ config, onGameEnd }) {
@@ -21,16 +25,16 @@ export default function SimulatorScreen({ config, onGameEnd }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [stopping, setStopping] = useState(false)
-  const [showSim, setShowSim] = useState(false)
+  const [phaseReady, setPhaseReady] = useState(false)
   const iframeRef = useRef(null)
   const gameIdRef = useRef(null)
   const endedRef = useRef(false)
   const stateRef = useRef(null)
-  // Audio: synth beeps via Web Audio (no asset files needed)
   const audioCtxRef = useRef(null)
   const prevScoreRef = useRef(0)
   const prevLifeRef = useRef(null)
   const startedRef = useRef(false)
+  const bootTimerRef = useRef(null)
 
   const beep = (freq, durMs, type = 'sine', gain = 0.15) => {
     try {
@@ -49,20 +53,13 @@ export default function SimulatorScreen({ config, onGameEnd }) {
       osc.stop(ctx.currentTime + durMs / 1000)
     } catch (e) { /* audio not available */ }
   }
-  const playScore = () => beep(880, 120, 'triangle', 0.18)   // bright ding
-  const playHurt = () => beep(140, 220, 'sawtooth', 0.22)    // low buzz
+  const playScore = () => beep(880, 120, 'triangle', 0.18)
+  const playHurt = () => beep(140, 220, 'sawtooth', 0.22)
 
-  // Start game on mount (or resume an already-running game after reload)
   useEffect(() => {
     if (startedRef.current) return
     startedRef.current = true
-    // Resuming: backend game already exists, don't start a new one.
-    if (config.resumeGameId) {
-      setGameId(config.resumeGameId)
-      gameIdRef.current = config.resumeGameId
-      setLoading(false)
-      return
-    }
+
     const startGame = async () => {
       try {
         const response = await fetch(`${API_URL}/start-game`, {
@@ -70,9 +67,8 @@ export default function SimulatorScreen({ config, onGameEnd }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             card_id: config.cardId,
-            level: config.playMode === 'group' ? (config.level || 'auto') : (config.level || 'A001'),
-            difficulty: config.difficulty || 'normal',
-            ...(config.playMode === 'group' ? { mode: 'group' } : {}),
+            level: config.level || 'A001',
+            difficulty: config.difficulty || 'normal'
           })
         })
         const data = await response.json()
@@ -87,10 +83,38 @@ export default function SimulatorScreen({ config, onGameEnd }) {
         setError(err.message)
       }
     }
-    startGame()
+
+    const resumeOrStart = async () => {
+      if (!config.resumeGameId) {
+        await startGame()
+        return
+      }
+      try {
+        const res = await fetch(`${API_URL}/game-state/${config.resumeGameId}`)
+        const data = await res.json()
+        if (data.success) {
+          setGameId(config.resumeGameId)
+          gameIdRef.current = config.resumeGameId
+          setLoading(false)
+          return
+        }
+      } catch (err) {
+        console.warn('Resume check failed, starting fresh:', err)
+      }
+      await startGame()
+    }
+
+    resumeOrStart()
   }, [config])
 
-  // End the game: stop on backend, record, route to result panel
+  useEffect(() => {
+    if (!gameId) return
+    bootTimerRef.current = setTimeout(() => setPhaseReady(true), 2000)
+    return () => {
+      if (bootTimerRef.current) clearTimeout(bootTimerRef.current)
+    }
+  }, [gameId])
+
   const endGame = async (reason) => {
     if (endedRef.current) return
     endedRef.current = true
@@ -102,28 +126,26 @@ export default function SimulatorScreen({ config, onGameEnd }) {
     const finalMultiplayer = st.multiplayer || false
     const finalTime = st.time_elapsed || 0
     const finalLife = st.life ?? 0
-    // out_of_life beats the passed reason (game ended because HP hit 0)
     const finalReason = st.game_over_reason === 'out_of_life'
       ? 'out_of_life' : (reason || 'stopped')
     try {
-      // Persist score to leaderboard
       await fetch(`${API_URL}/save-score`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           card_id: config.cardId,
           card_id2: config.cardId2 || null,
-          level: config.level,                       // starting level picked
-          end_level: st.current_level ?? config.level, // level ended on
-          score: finalScore,                         // raw P1 (on-screen)
-          score2: finalScore2,                       // raw P2 (on-screen)
-          final_score: st.final_score ?? finalScore,   // normalized P1
-          final_score2: st.final_score2 ?? finalScore2,// normalized P2
+          level: config.level,
+          end_level: st.current_level ?? config.level,
+          score: finalScore,
+          score2: finalScore2,
+          final_score: st.final_score ?? finalScore,
+          final_score2: st.final_score2 ?? finalScore2,
           multiplayer: finalMultiplayer,
           life: finalLife,
           lives_start: st.max_life ?? 0,
           result: st.result ?? null,
-          time_used: finalTime,                      // full session duration
+          time_used: finalTime,
           levels_cleared: st.levels_cleared ?? 0,
           difficulty: config.difficulty ?? '',
           started_at: st.started_at ?? ''
@@ -150,20 +172,21 @@ export default function SimulatorScreen({ config, onGameEnd }) {
     })
   }
 
-  // Poll game state; auto-end on timeout/game_over
   useEffect(() => {
     if (!gameId) return
     const pollState = async () => {
       try {
-        // Poll THIS game specifically (avoid stale "first active" game)
         const response = await fetch(`${API_URL}/game-state/${gameId}`)
         const data = await response.json()
         if (data.success) {
           const st = data.state
-          const backendAudio = st.backend_audio_active
-          const inPlaying = st.phase === 'playing'
-          // Sound cues on score gain / life loss — mute when backend audio active
-          if (inPlaying && !backendAudio) {
+          const backendAudio = st.backend_audio_active === true
+          const phase = st.phase || 'idle'
+          const inputLive = phase === 'playing' && st.accepting_input !== false
+
+          if (st.phase) setPhaseReady(true)
+
+          if (!backendAudio && inputLive) {
             if (st.score > prevScoreRef.current) playScore()
             if (prevLifeRef.current !== null && st.life < prevLifeRef.current) playHurt()
           }
@@ -184,7 +207,9 @@ export default function SimulatorScreen({ config, onGameEnd }) {
     return () => clearInterval(interval)
   }, [gameId])
 
-  if (loading) {
+  const booting = !phaseReady && gameId && !gameState?.phase
+
+  if (loading && !gameId) {
     return (
       <div className="screen">
         <div className="card">
@@ -202,26 +227,28 @@ export default function SimulatorScreen({ config, onGameEnd }) {
       <div className="screen">
         <div className="card">
           <h2>Error</h2>
-          <p style={{ color: 'var(--color-error)', marginTop: '20px' }}>{error}</p>
+          <p style={{ color: '#ff6b6b', marginTop: '20px' }}>{error}</p>
         </div>
       </div>
     )
   }
 
   const timeLeft = gameState?.time_left != null ? gameState.time_left : 300
-  // Hearts: 5 shown (each absorbs a share of mistakes scaled to this game's own
-  // max_life). Backend sends display_lives/display_max; fall back to raw HP.
   const life = gameState?.display_lives ?? gameState?.life ?? gameState?.max_life ?? 0
   const maxLife = gameState?.display_max ?? gameState?.max_life ?? 5
   const isOver = gameState?.game_over
-  const isMulti = !!(gameState?.multiplayer || config.playerCount === 2)
-  const p1Name = config.playerName || 'Player 1'
-  const p2Name = config.playerName2 || 'Player 2'
   const currentLevel = gameState?.current_level ?? config.level
-  const phase = gameState?.phase
-  const countdownLabel = gameState?.countdown_label
-  const inputLocked = gameState?.accepting_input === false ||
-    (phase && phase !== 'playing')
+  const phase = gameState?.phase || (isOver ? 'session_end' : booting ? 'idle' : 'playing')
+  const inputLocked = isInputBlocked(gameState)
+  const overlayCountdownText = countdownDisplay(gameState)
+  const phaseLabel = {
+    idle: '● STARTING',
+    playing: '● PLAYING',
+    countdown: '● COUNTDOWN',
+    level_clear: '● LEVEL CLEAR',
+    level_fail: '● LEVEL FAIL',
+    session_end: '● SESSION END',
+  }[phase] || (isOver ? '● ENDED' : '● STARTING')
 
   return (
     <div className="simulator-container">
@@ -230,139 +257,105 @@ export default function SimulatorScreen({ config, onGameEnd }) {
           <h2 style={{ margin: 0 }}>
             {config.game.toUpperCase()} - Level {currentLevel}
           </h2>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          <span style={{ fontSize: '0.8rem', color: '#888' }}>
             {config.difficulty?.toUpperCase()}
           </span>
         </div>
 
         <div className="game-info">
+          <div className="game-info-item">
+            <span className="game-info-value">{gameState?.score ?? 0}</span>
+            <span>Score</span>
+          </div>
+          <div className="game-info-item">
+            <span className="game-info-value" style={{ color: timeLeft < 30 ? '#ff6b6b' : '#fff' }}>
+              {Math.max(0, timeLeft).toFixed(0)}s
+            </span>
+            <span>Time Left</span>
+          </div>
+          <div className="game-info-item">
+            <span className="game-info-value" style={{ color: life <= maxLife * 0.3 ? '#ff6b6b' : '#51cf66' }}>
+              {life}/{maxLife}
+            </span>
+            <span>Life</span>
+          </div>
+          <div className="game-info-item">
+            <span style={{ color: isOver ? '#ff6b6b' : phase === 'playing' ? '#51cf66' : '#f5a623' }}>
+              {isOver ? '● ENDED' : phaseLabel}
+            </span>
+            <span>Status</span>
+          </div>
           <button
-            type="button"
-            className="view-toggle-btn"
-            onClick={() => setShowSim(v => !v)}
-          >
-            {showSim ? 'Show game board' : 'Show simulator'}
-          </button>
-          <button
-            type="button"
-            className="stop-game-btn"
             onClick={() => endGame('stopped')}
             disabled={stopping}
+            style={{
+              background: '#ff6b6b',
+              padding: '10px 20px',
+              fontSize: '0.9rem',
+              width: 'auto',
+              margin: 0
+            }}
           >
             {stopping ? 'Stopping...' : '■ Stop Game'}
           </button>
         </div>
       </div>
 
-      {/* Stable stage: iframe always full-size; HUD overlays on top */}
       <div className="simulator-stage">
+        {booting && (
+          <div className="boot-banner">
+            <h2>Starting Game...</h2>
+            <p>{config.game.toUpperCase()} - Level {config.level}</p>
+          </div>
+        )}
+
         <iframe
           ref={iframeRef}
-          className={`simulator-iframe ${showSim ? '' : 'simulator-iframe--hidden'}`}
-          src={WS_BRIDGE_URL}
+          className={`simulator-iframe${inputLocked ? ' simulator-iframe--blocked' : ''}`}
+          src={gameId ? `${WS_BRIDGE_URL}?game_id=${gameId}` : WS_BRIDGE_URL}
+          style={{ width: '100%', height: '100%', border: 'none', pointerEvents: inputLocked ? 'none' : 'auto' }}
           title="Game Simulator"
         />
 
-        {!showSim && (
-          <div className="play-hud">
-            <div className="hud-board">
-              <div className="hud-meta">
-                <span className="hud-level">Level {currentLevel}</span>
-                <span className="hud-diff">{config.difficulty?.toUpperCase()}</span>
-                <span className={`hud-status ${isOver ? 'ended' : 'playing'}`}>
-                  {isOver ? '● ENDED' : phase === 'countdown' ? '● COUNTDOWN' : '● PLAYING'}
-                </span>
-              </div>
-
-              <div className={`hud-players ${isMulti ? 'multi' : 'solo'}`}>
-                <div className="hud-player">
-                  <div className="hud-player-name">{p1Name}</div>
-                  {config.minutesRemaining != null && (
-                    <div className="hud-session-mins">
-                      {Math.round(config.minutesRemaining)} min left
-                    </div>
-                  )}
-                  <div className="hud-score">{gameState?.score ?? 0}</div>
-                  <div className="hud-score-label">{isMulti ? 'P1 Score' : 'Score'}</div>
-                </div>
-                {isMulti && (
-                  <div className="hud-player hud-player--p2">
-                    <div className="hud-player-name">{p2Name}</div>
-                    {config.minutesRemaining2 != null && (
-                      <div className="hud-session-mins">
-                        {Math.round(config.minutesRemaining2)} min left
-                      </div>
-                    )}
-                    <div className="hud-score">{gameState?.score2 ?? 0}</div>
-                    <div className="hud-score-label">P2 Score</div>
-                  </div>
-                )}
-              </div>
-
-              <div className="hud-stats">
-                <div className="hud-stat">
-                  <span
-                    className="hud-stat-value"
-                    style={{ color: timeLeft < 30 ? 'var(--color-error)' : 'var(--text-primary)' }}
-                  >
-                    {Math.max(0, timeLeft).toFixed(0)}s
-                  </span>
-                  <span className="hud-stat-label">Time Left</span>
-                </div>
-                <div className="hud-stat">
-                  <HeartRow life={life} maxLife={maxLife} />
-                  <span className="hud-stat-label">Lives {life}/{maxLife}</span>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                className="stop-game-btn stop-game-btn--lg"
-                onClick={() => endGame('stopped')}
-                disabled={stopping}
-              >
-                {stopping ? 'Stopping...' : '■ Stop Game'}
-              </button>
+        {showPhaseOverlay(gameState) && phase === 'countdown' && !isOver && overlayCountdownText && (
+          <div className="phase-countdown-overlay" aria-live="polite">
+            <div className={`countdown-num${overlayCountdownText === 'GO!' ? ' go' : ''}`}>
+              {overlayCountdownText}
             </div>
+            <div className="countdown-meta">Level {currentLevel}</div>
+          </div>
+        )}
+
+        {(phase === 'level_clear' || phase === 'level_fail') && !isOver && (
+          <div className={`phase-overlay ${phase}-overlay`} aria-live="polite">
+            {phase === 'level_clear' ? 'Level clear!' : 'Try again!'}
           </div>
         )}
       </div>
 
-      {phase === 'countdown' && countdownLabel && (
-        <div className="sim-countdown-overlay" aria-live="polite">
-          <div className={`countdown-num ${countdownLabel === 'GO' ? 'go' : ''}`}>
-            {countdownLabel}
-          </div>
-        </div>
-      )}
-
       {(config.playerName || config.playerName2) && (
-        <div className="sim-player-bar">
+        <div style={{
+          padding: '8px 20px', fontSize: '0.8rem', color: '#9aa0a6',
+          borderTop: '1px solid #1e1e2e', background: '#0a0a12',
+          display: 'flex', gap: '1.5rem',
+        }}>
           {config.playerName && (
-            <span>
-              {config.playerName}
-              {config.minutesRemaining != null
-                ? ` — ${Math.round(config.minutesRemaining)} min left`
-                : ''}
-            </span>
+            <span>👤 {config.playerName}{config.minutesRemaining != null ? ` — ${Math.round(config.minutesRemaining)} min left` : ''}</span>
           )}
           {config.playerName2 && (
-            <span className="sim-player-bar-p2">
-              {config.playerName2}
-              {config.minutesRemaining2 != null
-                ? ` — ${Math.round(config.minutesRemaining2)} min left`
-                : ''}
-            </span>
+            <span style={{ color: '#ffaa44' }}>👤 {config.playerName2}{config.minutesRemaining2 != null ? ` — ${Math.round(config.minutesRemaining2)} min left` : ''}</span>
           )}
         </div>
       )}
-
-      {showSim && (
-        <div className="sim-debug-footer">
-          Game ID: {gameId} | P1: {config.cardId}
-          {config.cardId2 ? ` | P2: ${config.cardId2}` : ''}
-        </div>
-      )}
+      <div style={{
+        padding: '10px 20px',
+        fontSize: '0.75rem',
+        color: '#666',
+        borderTop: '1px solid #1e1e2e',
+        background: '#06060c'
+      }}>
+        Game ID: {gameId} | P1: {config.cardId}{config.cardId2 ? ` | P2: ${config.cardId2}` : ''}
+      </div>
     </div>
   )
 }

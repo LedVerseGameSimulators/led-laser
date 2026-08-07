@@ -63,6 +63,10 @@ def _publish_floor(game, led_table, floor_rows, floor_cols, phase, label=None):
     )
     if label is not None:
         kwargs["countdown_label"] = label
+    if phase == "countdown":
+        wall_n = len(led_table.get_wall_light_arr())
+        kwargs["wall_display"] = [[0, 0, 0] for _ in range(wall_n)]
+    game.accepting_input = False
     game.update_state(**kwargs)
 
 

@@ -1,39 +1,34 @@
 import { useState, useEffect } from 'react'
-import LoginScreen         from './screens/LoginScreen'
+import LoginScreen        from './screens/LoginScreen'
 import GameSelectionScreen from './screens/GameSelectionScreen'
 import GameSettingsScreen  from './screens/GameSettingsScreen'
-import CountdownScreen     from './screens/CountdownScreen'
 import SimulatorScreen     from './screens/SimulatorScreen'
 import ResultScreen        from './screens/ResultScreen'
 
 import { API_URL } from './config'
 
 const S = {
-  GAME_SELECT: 'game_select',  // pick play mode (single / multi / group)
-  SETTINGS:    'settings',     // pick category + level + difficulty
+  GAME_SELECT: 'game_select',  // pick game type (LED Hex, Hoops…)
+  SETTINGS:    'settings',     // pick players + category + level + difficulty
   LOGIN:       'login',        // enter 1 or 2 card IDs
-  COUNTDOWN:   'countdown',
   SIMULATOR:   'simulator',
   RESULT:      'result',
 }
 
-const DEFAULT_CONFIG = {
-  game: 'laser',
-  playMode: 'single',
-  level: 'A001',
-  playerCount: 1,
-  difficulty: 'normal',
-  cardId: '',
-  cardId2: '',
-  playerName: '',
-  playerName2: '',
-  minutesRemaining: null,
-  minutesRemaining2: null,
-}
-
 export default function App() {
   const [screen, setScreen] = useState(S.GAME_SELECT)
-  const [gameConfig, setGameConfig] = useState(DEFAULT_CONFIG)
+  const [gameConfig, setGameConfig] = useState({
+    game: 'laser',
+    level: 'A001',
+    playerCount: 1,
+    difficulty: 'normal',
+    cardId: '',
+    cardId2: '',
+    playerName: '',
+    playerName2: '',
+    minutesRemaining: null,
+    minutesRemaining2: null,
+  })
   const [result, setResult] = useState(null)
   const [booting, setBooting] = useState(true)
 
@@ -57,32 +52,9 @@ export default function App() {
       .finally(() => setBooting(false))
   }, [])
 
-  // Step 1: play mode selected (single | multi | group)
-  const handleModeSelect = (mode) => {
-    if (mode === 'group') {
-      // Group skips settings; backend builds playlist from games/source_group/
-      setGameConfig(prev => ({
-        ...prev,
-        game: 'laser',
-        playMode: 'group',
-        playerCount: 1,
-        level: 'auto',
-        difficulty: 'normal',
-        resumeGameId: undefined,
-      }))
-      setScreen(S.LOGIN)
-      return
-    }
-
-    // Laser has no multiplayer levels — Multi is not offered on landing.
-    if (mode === 'multi') return
-
-    setGameConfig(prev => ({
-      ...prev,
-      game: 'laser',
-      playMode: 'single',
-      playerCount: 1,
-    }))
+  // Step 1: game type selected
+  const handleGameSelect = (game) => {
+    setGameConfig(prev => ({ ...prev, game }))
     setScreen(S.SETTINGS)
   }
 
@@ -107,7 +79,7 @@ export default function App() {
       minutesRemaining,
       minutesRemaining2,
     }))
-    setScreen(S.COUNTDOWN)
+    setScreen(S.SIMULATOR)
   }
 
   const handleGameEnd = (finalResult) => {
@@ -117,13 +89,13 @@ export default function App() {
 
   const handlePlayAgain = () => {
     setResult(null)
-    // Group returns to landing; single/multi return to level settings
-    setScreen(gameConfig.playMode === 'group' ? S.GAME_SELECT : S.SETTINGS)
+    setScreen(S.SETTINGS)
   }
 
   const handleLogout = () => {
     setResult(null)
-    setGameConfig({ ...DEFAULT_CONFIG })
+    setGameConfig({ game: 'climb', level: 'A001', playerCount: 1,
+                   difficulty: 'normal', cardId: '', cardId2: '' })
     setScreen(S.GAME_SELECT)
   }
 
@@ -136,32 +108,21 @@ export default function App() {
   return (
     <>
       {screen === S.GAME_SELECT && (
-        <GameSelectionScreen
-          onSelect={handleModeSelect}
-        />
+        <GameSelectionScreen onSelect={handleGameSelect} />
       )}
       {screen === S.SETTINGS && (
         <GameSettingsScreen
           game={gameConfig.game}
-          playerCount={gameConfig.playerCount}
           onConfirm={handleSettings}
           onBack={() => setScreen(S.GAME_SELECT)}
         />
       )}
       {screen === S.LOGIN && (
         <LoginScreen
-          gameTitle="Laser Trap"
+          gameTitle="🔴 Laser Trap"
           playerCount={gameConfig.playerCount}
           onLogin={handleLogin}
-          onBack={() => setScreen(
-            gameConfig.playMode === 'group' ? S.GAME_SELECT : S.SETTINGS
-          )}
-        />
-      )}
-      {screen === S.COUNTDOWN && (
-        <CountdownScreen
-          config={gameConfig}
-          onDone={() => setScreen(S.SIMULATOR)}
+          onBack={() => setScreen(S.SETTINGS)}
         />
       )}
       {screen === S.SIMULATOR && (
