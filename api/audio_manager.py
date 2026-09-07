@@ -111,6 +111,12 @@ class AudioManager:
     def tick_on_second(self, n: int):
         self.play_sfx(str(AUDIO_DIR / "countdown_tick.mp3"))
 
+    def play_score_positive(self) -> None:
+        self.play_sfx(str(AUDIO_DIR / "score_positive.mp3"))
+
+    def play_score_negative(self) -> None:
+        self.play_sfx(str(AUDIO_DIR / "score_negative.mp3"))
+
     def shutdown(self):
         if self._thread and self._thread.is_alive():
             self._put(_CMD_SHUTDOWN)
@@ -118,11 +124,13 @@ class AudioManager:
 
 
 def create_audio_manager() -> AudioManager:
-    """Real audio when pygame works; no-op otherwise (CI / mocked imports)."""
+    """Real audio when pygame works; no-op otherwise (CI / headless)."""
     if os.environ.get("LASER_AUDIO_DISABLED", "0") == "1":
         return AudioManager(enabled=False)
     try:
         import pygame  # noqa: F401
-        return AudioManager(enabled=True)
+        mgr = AudioManager(enabled=True)
+        mgr._ensure_worker()
+        return mgr
     except Exception:
         return AudioManager(enabled=False)

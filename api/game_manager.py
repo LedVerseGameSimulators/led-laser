@@ -69,11 +69,7 @@ mocks = {
     }),
     'net': MagicMock(),
     'socket': MagicMock(),
-    # Audio/Video
-    'pygame': MagicMock(),
-    'pygame.mixer': MagicMock(),
-    'audio_play': MagicMock(),
-    'audio_play.audio': MagicMock(),
+    # Audio/Video — do NOT mock pygame/audio_play (venue BGM/SFX need real mixer)
     'moviepy': MagicMock(),
     'moviepy.editor': MagicMock(),
     'cv2': MagicMock(),
@@ -1539,6 +1535,8 @@ class GameManager:
 
                         floor_rows, floor_cols = led_table.led_row, led_table.led_col
                         # Floor rules use red_table/blue_table flags (before redraw).
+                        prev_score = game.score
+                        prev_life = game.life
                         game.vary_with_color_state(dgroup, time_pass, total_pass)
                         led_table.redraw_led_table_default(draw_canvas=False)
                         with game.input_lock:
@@ -1546,6 +1544,11 @@ class GameManager:
                             for wi in range(wall_n):
                                 if wall_state[wi] and wi in (red_walls | deduct_walls):
                                     game.try_score_wall(wi, total_pass)
+                        if audio.active:
+                            if game.score > prev_score:
+                                audio.play_score_positive()
+                            elif game.score < prev_score or game.life < prev_life:
+                                audio.play_score_negative()
 
                         import math as _math
                         pulse = 0.75 + 0.25 * (0.5 + 0.5 * _math.sin(total_pass * _math.pi * 2))
