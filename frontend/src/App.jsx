@@ -8,27 +8,30 @@ import ResultScreen        from './screens/ResultScreen'
 import { API_URL } from './config'
 
 const S = {
-  GAME_SELECT: 'game_select',  // pick game type (LED Hex, Hoops…)
-  SETTINGS:    'settings',     // pick players + category + level + difficulty
-  LOGIN:       'login',        // enter 1 or 2 card IDs
+  GAME_SELECT: 'game_select',  // pick play mode (single / group)
+  SETTINGS:    'settings',     // pick category + level + difficulty
+  LOGIN:       'login',        // enter card ID
   SIMULATOR:   'simulator',
   RESULT:      'result',
 }
 
+const DEFAULT_CONFIG = {
+  game: 'laser',
+  playMode: 'single',
+  level: 'A001',
+  playerCount: 1,
+  difficulty: 'normal',
+  cardId: '',
+  cardId2: '',
+  playerName: '',
+  playerName2: '',
+  minutesRemaining: null,
+  minutesRemaining2: null,
+}
+
 export default function App() {
   const [screen, setScreen] = useState(S.GAME_SELECT)
-  const [gameConfig, setGameConfig] = useState({
-    game: 'laser',
-    level: 'A001',
-    playerCount: 1,
-    difficulty: 'normal',
-    cardId: '',
-    cardId2: '',
-    playerName: '',
-    playerName2: '',
-    minutesRemaining: null,
-    minutesRemaining2: null,
-  })
+  const [gameConfig, setGameConfig] = useState(DEFAULT_CONFIG)
   const [result, setResult] = useState(null)
   const [booting, setBooting] = useState(true)
 
@@ -52,22 +55,45 @@ export default function App() {
       .finally(() => setBooting(false))
   }, [])
 
-  // Step 1: game type selected
-  const handleGameSelect = (game) => {
-    setGameConfig(prev => ({ ...prev, game }))
+  // Step 1: play mode (single | group)
+  const handleModeSelect = (mode) => {
+    if (mode === 'group') {
+      setGameConfig(prev => ({
+        ...prev,
+        game: 'laser',
+        playMode: 'group',
+        playerCount: 1,
+        level: 'auto',
+        difficulty: 'normal',
+        resumeGameId: undefined,
+      }))
+      setScreen(S.LOGIN)
+      return
+    }
+
+    setGameConfig(prev => ({
+      ...prev,
+      game: 'laser',
+      playMode: 'single',
+      playerCount: 1,
+    }))
     setScreen(S.SETTINGS)
   }
 
-  // Step 2: settings confirmed — clear resumeGameId so simulator starts fresh
+  // Step 2: settings confirmed
   const handleSettings = ({ game, level, playerCount, difficulty }) => {
     setGameConfig(prev => ({
-      ...prev, game, level, playerCount, difficulty,
-      resumeGameId: undefined   // don't resume old game
+      ...prev,
+      game: game || prev.game || 'laser',
+      level,
+      playerCount,
+      difficulty,
+      resumeGameId: undefined,
     }))
     setScreen(S.LOGIN)
   }
 
-  // Step 3: login (1 or 2 cards)
+  // Step 3: login
   const handleLogin = (cardId, cardId2, playerName = '', playerName2 = '',
                        minutesRemaining = null, minutesRemaining2 = null) => {
     setGameConfig(prev => ({
@@ -89,13 +115,12 @@ export default function App() {
 
   const handlePlayAgain = () => {
     setResult(null)
-    setScreen(S.SETTINGS)
+    setScreen(gameConfig.playMode === 'group' ? S.GAME_SELECT : S.SETTINGS)
   }
 
   const handleLogout = () => {
     setResult(null)
-    setGameConfig({ game: 'climb', level: 'A001', playerCount: 1,
-                   difficulty: 'normal', cardId: '', cardId2: '' })
+    setGameConfig({ ...DEFAULT_CONFIG })
     setScreen(S.GAME_SELECT)
   }
 
@@ -108,7 +133,7 @@ export default function App() {
   return (
     <>
       {screen === S.GAME_SELECT && (
-        <GameSelectionScreen onSelect={handleGameSelect} />
+        <GameSelectionScreen onSelect={handleModeSelect} />
       )}
       {screen === S.SETTINGS && (
         <GameSettingsScreen
@@ -122,7 +147,9 @@ export default function App() {
           gameTitle="🔴 Laser Trap"
           playerCount={gameConfig.playerCount}
           onLogin={handleLogin}
-          onBack={() => setScreen(S.SETTINGS)}
+          onBack={() => setScreen(
+            gameConfig.playMode === 'group' ? S.GAME_SELECT : S.SETTINGS
+          )}
         />
       )}
       {screen === S.SIMULATOR && (
