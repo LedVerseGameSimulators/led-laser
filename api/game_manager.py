@@ -1677,7 +1677,9 @@ class GameManager:
                 countdown_led = _fx_dir / "countdown.led"
                 clear_led = _fx_dir / "level_clear.led"
                 fail_led = _fx_dir / "level_fail.led"
-                bgm_path = GAMES_ROOT / "audio" / "bgm.mp3"
+                bgm_path = GAMES_ROOT / "audio" / "bgm_laser.mp3"
+                if not bgm_path.exists():
+                    bgm_path = GAMES_ROOT / "audio" / "bgm.mp3"
                 game.update_state(backend_audio_active=audio.active)
 
                 def _hw_draw_effect(lt):
