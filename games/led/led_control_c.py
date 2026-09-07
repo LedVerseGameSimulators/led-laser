@@ -6,6 +6,7 @@
 import shelve, sys
 import encryption.yanqian as yanqian
 from led import communication, position_convert
+from led.wire_encoding import encode_wire_color
 from loguru import logger
 import traceback
 from model.setting import Setting
@@ -119,10 +120,8 @@ class LedControl:
                      com[1], com[2]]
                     array = one_array[int(values[0]) - 1:int(values[1])]
                     array_com_protocal = [255, 255]
-                    for tuple in list(reversed(array)):
-                        array_com_protocal.append(tuple[0])
-                        array_com_protocal.append(tuple[1])
-                        array_com_protocal.append(tuple[2])
+                    for color in list(reversed(array)):
+                        array_com_protocal.extend(encode_wire_color(color))
 
                     com[0].Send_data(array_com_protocal)
 
@@ -138,10 +137,8 @@ class LedControl:
                  com[1], com[2]]
                 array_com_protocal = [
                  255, 255]
-                for tuple in list(reversed(data_array)):
-                    array_com_protocal.append(tuple[0])
-                    array_com_protocal.append(tuple[1])
-                    array_com_protocal.append(tuple[2])
+                for color in list(reversed(data_array)):
+                    array_com_protocal.extend(encode_wire_color(color))
 
                 com[0].Send_data(array_com_protocal)
                 i += 1
@@ -158,10 +155,8 @@ class LedControl:
                  com[1], com[2]]
                 array = m_led_color_one_array[int(values[0]) - 1:int(values[1])]
                 array_com_protocal = [255, 255]
-                for tuple in list(reversed(array)):
-                    array_com_protocal.append(tuple[0])
-                    array_com_protocal.append(tuple[1])
-                    array_com_protocal.append(tuple[2])
+                for color in list(reversed(array)):
+                    array_com_protocal.extend(encode_wire_color(color))
 
                 com[0].Send_data(array_com_protocal)
 

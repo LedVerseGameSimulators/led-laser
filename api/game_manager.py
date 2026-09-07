@@ -734,7 +734,8 @@ class HeadlessGameGUI:
                     start_time = group.start_time_sec
                     end_time = group.end_time_sec
                     if set_cell is not None and total_pass > start_time and total_pass < end_time:
-                        color = getattr(group, 'color', (0, 255, 0))
+                        from model.setting import Color
+                        color = getattr(group, 'color', Color.GREEN)
                         if hasattr(self.led_table, 'set_color_table_by_set_cell'):
                             self.led_table.set_color_table_by_set_cell(set_cell, color)
         except Exception as e:

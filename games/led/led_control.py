@@ -10,6 +10,7 @@ import encryption.yanqian as yanqian
 _GAMES_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEBUG_PARAM = os.path.join(_GAMES_DIR, 'setting', 'debug_parameter')
 from led import communication, position_convert
+from led.wire_encoding import encode_wire_color
 from loguru import logger
 import traceback
 from model.setting import Setting
@@ -125,9 +126,7 @@ def draw_screen_by_com(layout_type, logic_2array):
                         tuple_color = logic_2array[ri][ci]
                     else:
                         tuple_color = (0, 0, 0)
-                    array_com_protocal.append(tuple_color[0])
-                    array_com_protocal.append(tuple_color[1])
-                    array_com_protocal.append(tuple_color[2])
+                    array_com_protocal.extend(encode_wire_color(tuple_color))
 
                 com[0].Send_data(array_com_protocal)
                 i += 1
@@ -144,10 +143,8 @@ def display_led_screen():
              com[1], com[2]]
             array = m_led_color_one_array[int(values[0]) - 1:int(values[1])]
             array_com_protocal = [255, 255]
-            for tuple in list(reversed(array)):
-                array_com_protocal.append(tuple[0])
-                array_com_protocal.append(tuple[1])
-                array_com_protocal.append(tuple[2])
+            for color in list(reversed(array)):
+                array_com_protocal.extend(encode_wire_color(color))
 
             com[0].Send_data(array_com_protocal)
 
