@@ -3,7 +3,6 @@
 # Decompiled from: Python 3.7.17 (default, Sep 20 2023, 11:59:52) 
 # [GCC 12.2]
 # Embedded file name: led_control_c.py
-import os
 import shelve, sys
 import encryption.yanqian as yanqian
 from led import communication, position_convert
@@ -36,9 +35,8 @@ class LedControl:
         if not list_com_info is None:
             if len(list_com_info) == 0:
                 return list_serial_open_error
-            if yanqian.yanqian():
-                # Absolute shelve path — cwd may not be games/
-                f = shelve.open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "setting", "debug_parameter"))
+            if yanqian():
+                f = shelve.open("./setting/debug_parameter")
                 com_is_block = f.get("com_is_block")
                 f.close()
                 logger.warning("串口阻塞{}", com_is_block)
