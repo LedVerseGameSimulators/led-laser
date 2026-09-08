@@ -66,13 +66,14 @@ call "%ROOT%\STOP_GAME.bat" /quiet
 ping -n 2 127.0.0.1 >nul
 
 echo Starting floor engine (hardware mode)...
-start "LED Laser API" /min cmd.exe /k "cd /d %ROOT% && set USE_SERIAL_HD=1 && python -m uvicorn api.main:app --host 0.0.0.0 --port 8001"
+REM /MIN before title; no space before & after set value (avoids USE_SERIAL_HD=1[space])
+start /min "LED Laser API" cmd.exe /k "cd /d %ROOT% & set USE_SERIAL_HD=1& python -m uvicorn api.main:app --host 0.0.0.0 --port 8001"
 
 echo Starting simulator bridge...
-start "LED Laser Bridge" /min cmd.exe /k "cd /d %ROOT% && set API_PORT=8001 && set WS_BRIDGE_PORT=8768 && python ws_bridge.py"
+start /min "LED Laser Bridge" cmd.exe /k "cd /d %ROOT% & set API_PORT=8001& set WS_BRIDGE_PORT=8768& python ws_bridge.py"
 
 echo Starting operator interface...
-start "LED Laser UI" /min cmd.exe /k "cd /d %ROOT%\frontend && npm run dev"
+start /min "LED Laser UI" cmd.exe /k "cd /d %ROOT%\frontend & npm run dev"
 
 echo Waiting for services...
 ping -n 6 127.0.0.1 >nul

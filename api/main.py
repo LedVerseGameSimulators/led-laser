@@ -517,6 +517,7 @@ async def startup():
 async def hw_debug():
     """Live hardware loop diagnostics."""
     import os as _os
+    from . import game_manager as _gm
     games = []
     for gid, g in game_manager.games.items():
         games.append({
@@ -526,8 +527,12 @@ async def hw_debug():
             "hw_draw_count": getattr(g, "_hw_draw_count", 0),
             "last_hw_draw": getattr(g, "_hw_last_draw", 0),
         })
+    raw = _os.environ.get("USE_SERIAL_HD")
     return {
-        "use_serial_hd": _os.environ.get("USE_SERIAL_HD", "0") == "1",
+        "use_serial_hd_env": raw == "1",
+        "use_serial_hd_env_raw": raw,
+        "use_serial_hd_module": bool(getattr(_gm, "USE_SERIAL_HD", False)),
+        "use_serial_hd": raw == "1",  # keep old key for compatibility
         "active_games": len(games),
         "games": games,
         "zombie_threads": game_manager.zombie_threads,
