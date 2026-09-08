@@ -101,10 +101,20 @@ for mod_name, mock in mocks.items():
 
 _HW_DEFAULT_ROWS = 6
 _HW_DEFAULT_COLS = 16
-_hw_led_control = None
-_hw_layout_type = 0
 _HW_DRAW_INTERVAL = float(os.environ.get("HW_DRAW_INTERVAL", "0.045"))
 _hw_serial_lock = threading.Lock()
+
+# COM9 emitters (module) + COM7 wall buttons + COM6 beam receivers (LedControl instances)
+_hw_led_control = None
+_hw_layout_type = 0
+_hw_ready = False
+_hw_wall_ctrl = None
+_hw_wall_ready = False
+_hw_recv_ctrl = None
+_hw_recv_ready = False
+
+# COM6: raw True = dark. Intact lit beam → False tread. Do not invert.
+_HW_RAW_TRUE_MEANS_INTACT = False
 
 
 def _normalize_rgb(cell):
@@ -118,47 +128,85 @@ def _normalize_rgb(cell):
 
 
 def _hw_init():
-    global _hw_led_control, _hw_layout_type
-    if _hw_led_control is not None:
+    """Open COM9 emit + COM7 wall + COM6 recv independently (soft-fail per port)."""
+    global _hw_led_control, _hw_layout_type, _hw_ready
+    global _hw_wall_ctrl, _hw_wall_ready, _hw_recv_ctrl, _hw_recv_ready
+    if _hw_led_control is not None or _hw_wall_ctrl is not None or _hw_recv_ctrl is not None:
         return _hw_led_control
     try:
         import shelve as _s
         from led import led_control as _lc
+        from led.led_control_c import LedControl
         db = _s.open(str(GAMES_ROOT / 'setting' / 'led_parameter'), flag='r')
         list_com_info = db.get('list_com_info', [])
-        layout_type   = int(db.get('led_layout_type', 0))
-        no_use        = db.get('floor_layout_coors_no_use', [])
-        rows          = int(float(db.get('value_high', _HW_DEFAULT_ROWS)))
-        cols          = int(float(db.get('value_width', _HW_DEFAULT_COLS)))
+        list_wall_com_info = db.get('list_wall_com_info', [])
+        list_screen_com_info = db.get('list_screen_com_info', [])
+        layout_type = int(db.get('led_layout_type', 0))
+        no_use = db.get('floor_layout_coors_no_use', [])
+        rows = int(float(db.get('value_high', _HW_DEFAULT_ROWS)))
+        cols = int(float(db.get('value_width', _HW_DEFAULT_COLS)))
         db.close()
-        _lc.init_layout(layout_type, rows, cols, no_use)
-        errors = _lc.init_com(list_com_info)
-        if errors:
-            logger.warning(f"HW init COM errors (non-fatal): {errors}")
-        logger.info(f"Hardware ready: {len(list_com_info)} port(s), {rows}×{cols}, layout={layout_type}")
-        _hw_led_control = _lc
+
         _hw_layout_type = layout_type
+
+        try:
+            _lc.init_layout(layout_type, rows, cols, no_use)
+            errors = _lc.init_com(list_com_info)
+            if errors:
+                logger.warning(f"HW emitters (COM9) open errors (non-fatal): {errors}")
+            _hw_led_control = _lc
+            _hw_ready = bool(list_com_info) and not errors
+        except Exception as e:
+            logger.warning(f"HW emitters (COM9) init failed: {e}")
+
+        try:
+            _wall = LedControl()
+            wall_errors = _wall.init_com(list_wall_com_info)
+            if wall_errors:
+                logger.warning(f"HW wall buttons (COM7) open errors (non-fatal): {wall_errors}")
+            _hw_wall_ctrl = _wall
+            _hw_wall_ready = bool(list_wall_com_info) and not wall_errors
+        except Exception as e:
+            logger.warning(f"HW wall buttons (COM7) init failed: {e}")
+
+        try:
+            _recv = LedControl()
+            recv_errors = _recv.init_com(list_screen_com_info)
+            if recv_errors:
+                logger.warning(f"HW receivers (COM6) open errors (non-fatal): {recv_errors}")
+            _hw_recv_ctrl = _recv
+            _hw_recv_ready = bool(list_screen_com_info) and not recv_errors
+        except Exception as e:
+            logger.warning(f"HW receivers (COM6) init failed: {e}")
+
+        logger.info(
+            f"Hardware init: emit(COM9)={_hw_ready} wall(COM7)={_hw_wall_ready} "
+            f"recv(COM6)={_hw_recv_ready}, {rows}×{cols}, layout={layout_type}"
+        )
     except Exception as e:
         logger.error(f"Hardware init failed: {e}")
     return _hw_led_control
 
 
 def _hw_blank_floor(led_table=None):
-    """Send one all-black frame to the physical floor. Call at every game
-    end/stop path (session-end, stop_game, clear_all) so the hardware
-    doesn't stay stuck lit with the last drawn pattern after a game ends.
-    Uses the same draw call as normal gameplay frames, gated the same way.
-    """
-    if not (USE_SERIAL_HD and _hw_led_control is not None):
+    """Blank emitters (COM9) and wall lamps (COM7) on every stop path."""
+    if not USE_SERIAL_HD:
         return
-    try:
-        rows = getattr(led_table, "led_row", None) or _HW_DEFAULT_ROWS
-        cols = getattr(led_table, "led_col", None) or _HW_DEFAULT_COLS
-        blank = [[0, 0, 0] for _ in range(cols)]
-        with _hw_serial_lock:
-            _hw_led_control.draw_screen_by_com(_hw_layout_type, [blank[:] for _ in range(rows)])
-    except Exception as e:
-        logger.warning(f"HW blank failed: {e}")
+    if _hw_led_control is not None:
+        try:
+            rows = getattr(led_table, "led_row", None) or _HW_DEFAULT_ROWS
+            cols = getattr(led_table, "led_col", None) or _HW_DEFAULT_COLS
+            blank = [[0, 0, 0] for _ in range(cols)]
+            with _hw_serial_lock:
+                _hw_led_control.draw_screen_by_com(_hw_layout_type, [blank[:] for _ in range(rows)])
+        except Exception as e:
+            logger.warning(f"HW floor blank failed: {e}")
+    if _hw_wall_ctrl is not None:
+        try:
+            with _hw_serial_lock:
+                _hw_wall_ctrl.draw_wall_light_by_com([[0, 0, 0], [0, 0, 0]])
+        except Exception as e:
+            logger.warning(f"HW wall blank failed: {e}")
 
 # Will import after config is set
 # from game_play.Play import Play
@@ -1122,8 +1170,7 @@ class GameInstance:
         return True
 
     def apply_floor_input(self, row: int, col: int, action: str):
-        """Simulator: human stands on floor grid; stepping on the tile in front of
-        the lit blue wall module presses that wall target."""
+        """Simulator floor step. When COM6/COM7 live, do not wipe HW-derived state."""
         if not self.accepting_input or self.current_state.get("phase") != "playing":
             return False
         if self.led_table is None:
@@ -1132,24 +1179,28 @@ class GameInstance:
         rows, cols = self.led_table.led_row, self.led_table.led_col
         if r < 0 or r >= rows or c < 0 or c >= cols:
             return False
+        hw_live = USE_SERIAL_HD and (_hw_wall_ready or _hw_recv_ready)
         with self.input_lock:
             st = self.led_table.get_state_table()
             if action == "press":
-                for ri in range(rows):
-                    for ci in range(cols):
-                        st[ri][ci] = False
+                if not hw_live:
+                    for ri in range(rows):
+                        for ci in range(cols):
+                            st[ri][ci] = False
                 self.led_table.press_cell(r, c)
                 self.player_floor_pos = (r, c)
-                self.led_table.clear_wall_light_state()
-                for wi in (self.goal_walls | self.red_walls | self.deduct_walls):
-                    press = self._floor_press_for_wall(wi)
-                    if press == (r, c):
-                        self.led_table.press_wall(wi)
+                if not hw_live:
+                    self.led_table.clear_wall_light_state()
+                    for wi in (self.goal_walls | self.red_walls | self.deduct_walls):
+                        press = self._floor_press_for_wall(wi)
+                        if press == (r, c):
+                            self.led_table.press_wall(wi)
             elif action == "release":
                 self.led_table.release_cell(r, c)
                 if self.player_floor_pos == (r, c):
                     self.player_floor_pos = None
-                self.led_table.clear_wall_light_state()
+                if not hw_live:
+                    self.led_table.clear_wall_light_state()
         return True
 
 
@@ -1442,6 +1493,34 @@ class GameManager:
                         wall_state = led_table.get_wall_light_state_array()
                         wall_n = len(wall_state)
 
+                        # ── HARDWARE READ (COM7 buttons + COM6 breaks) ──────
+                        if USE_SERIAL_HD and game.running:
+                            with game.input_lock, _hw_serial_lock:
+                                if _hw_wall_ready and _hw_wall_ctrl is not None:
+                                    try:
+                                        _btn = [False, False]
+                                        _hw_wall_ctrl.update_wall_light_state_by_com(_btn)
+                                        if wall_n >= 2:
+                                            wall_state[0] = bool(_btn[0])
+                                            wall_state[1] = bool(_btn[1])
+                                    except Exception as _hw_err:
+                                        logger.warning(f"HW wall read: {_hw_err}")
+                                if _hw_recv_ready and _hw_recv_ctrl is not None \
+                                        and getattr(game, "_hw_draw_count", 0) > 0:
+                                    try:
+                                        _rrows, _rcols = led_table.led_row, led_table.led_col
+                                        _raw = [[False] * _rcols for _ in range(_rrows)]
+                                        _hw_recv_ctrl.update_screen_state_by_com(
+                                            _hw_layout_type, _raw, _raw)
+                                        _st = led_table.get_state_table()
+                                        for _ri in range(_rrows):
+                                            for _ci in range(_rcols):
+                                                _bit = _raw[_ri][_ci]
+                                                _st[_ri][_ci] = (not _bit) if \
+                                                    _HW_RAW_TRUE_MEANS_INTACT else _bit
+                                    except Exception as _hw_err:
+                                        logger.warning(f"HW recv read: {_hw_err}")
+
                         # ── LASER WALL CLASSIFICATION ───────────────────────
                         goal_walls = set()
                         red_walls = set()
@@ -1598,20 +1677,30 @@ class GameManager:
                             on = int(el / 0.1) % 2 == 0
                             wall_display[wi] = [255, 255, 255] if on else [0, 0, 0]
 
+                        # ── HARDWARE WRITE (COM9 emitters + COM7 lamps) ─────
                         _now = time.time()
-                        if USE_SERIAL_HD and _hw_led_control is not None and \
+                        if USE_SERIAL_HD and game.running and \
                                 _now - getattr(game, "_hw_last_draw", 0) >= _HW_DRAW_INTERVAL:
                             with _hw_serial_lock:
-                                try:
-                                    _rc = led_table.led_row
-                                    _cc = led_table.led_col
-                                    _ld2 = [[_normalize_rgb(floor_display[r * _cc + c]) for c in range(_cc)] for r in range(_rc)]
-                                    _hw_led_control.draw_screen_by_com(_hw_layout_type, _ld2)
-                                    game._hw_last_draw = _now
-                                    game._hw_draw_count = getattr(game, "_hw_draw_count", 0) + 1
-                                    _hw_led_control.update_screen_state_by_com(_hw_layout_type, led_table.state_table, led_table.state_table)
-                                except Exception as _hw_err:
-                                    logger.warning(f"HW I/O: {_hw_err}")
+                                if _hw_led_control is not None:
+                                    try:
+                                        _rc = led_table.led_row
+                                        _cc = led_table.led_col
+                                        _ld2 = [[_normalize_rgb(floor_display[r * _cc + c]) for c in range(_cc)] for r in range(_rc)]
+                                        _hw_led_control.draw_screen_by_com(_hw_layout_type, _ld2)
+                                        game._hw_draw_count = getattr(game, "_hw_draw_count", 0) + 1
+                                    except Exception as _hw_err:
+                                        logger.warning(f"HW emit write: {_hw_err}")
+                                if _hw_wall_ready and _hw_wall_ctrl is not None:
+                                    try:
+                                        _lamp = [
+                                            _normalize_rgb(wall_arr[0]) if len(wall_arr) > 0 else [0, 0, 0],
+                                            _normalize_rgb(wall_arr[1]) if len(wall_arr) > 1 else [0, 0, 0],
+                                        ]
+                                        _hw_wall_ctrl.draw_wall_light_by_com(_lamp)
+                                    except Exception as _hw_err:
+                                        logger.warning(f"HW wall write: {_hw_err}")
+                                game._hw_last_draw = _now
 
                         ppos = list(game.player_floor_pos) if game.player_floor_pos else None
                         game.update_state(

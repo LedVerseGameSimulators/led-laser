@@ -532,7 +532,10 @@ async def hw_debug():
         "use_serial_hd_env": raw == "1",
         "use_serial_hd_env_raw": raw,
         "use_serial_hd_module": bool(getattr(_gm, "USE_SERIAL_HD", False)),
-        "use_serial_hd": raw == "1",  # keep old key for compatibility
+        "use_serial_hd": raw == "1",
+        "hw_emit_ready": bool(getattr(_gm, "_hw_ready", False)),
+        "hw_wall_ready": bool(getattr(_gm, "_hw_wall_ready", False)),
+        "hw_recv_ready": bool(getattr(_gm, "_hw_recv_ready", False)),
         "active_games": len(games),
         "games": games,
         "zombie_threads": game_manager.zombie_threads,
