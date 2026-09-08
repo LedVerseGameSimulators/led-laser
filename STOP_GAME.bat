@@ -15,7 +15,8 @@ if /i not "%QUIET%"=="/quiet" (
 
 REM Ask the API to stop cleanly first so physical LEDs get a black frame.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $a=Invoke-RestMethod 'http://localhost:8001/active-game' -TimeoutSec 2; if ($a.success) { $body=@{card_id=$a.card_id;game_id=$a.game_id}|ConvertTo-Json -Compress; Invoke-RestMethod -Method Post -Uri 'http://localhost:8001/logout' -ContentType 'application/json' -Body $body -TimeoutSec 4 | Out-Null } } catch {}" >nul 2>&1
-timeout /t 1 /nobreak >nul
+REM ping-delay works even when stdin is redirected (timeout does not)
+ping -n 2 127.0.0.1 >nul
 
 echo Stopping floor engine, bridge, and interface...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ports=8001,8768,5174; Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $ports -contains $_.LocalPort } | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }" >nul 2>&1
@@ -32,5 +33,5 @@ if /i "%QUIET%"=="/quiet" (
 
 echo.
 echo LED Laser has stopped.
-timeout /t 2 /nobreak >nul
+ping -n 3 127.0.0.1 >nul
 exit /b 0
