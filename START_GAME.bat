@@ -75,7 +75,7 @@ echo Starting operator interface...
 start "LED Laser UI" /min cmd.exe /k "cd /d %ROOT%\frontend && npm run dev"
 
 echo Waiting for services...
-timeout /t 5 /nobreak >nul
+ping -n 6 127.0.0.1 >nul
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r=Invoke-WebRequest -UseBasicParsing 'http://localhost:8001/health' -TimeoutSec 3; if ($r.StatusCode -ne 200) { exit 1 } } catch { exit 1 }" >nul 2>&1
 if errorlevel 1 (
@@ -89,7 +89,7 @@ echo LED Laser is ready.
 echo Opening http://localhost:5174
 echo.
 start "" "http://localhost:5174"
-timeout /t 2 /nobreak >nul
+ping -n 3 127.0.0.1 >nul
 exit /b 0
 
 :failed
