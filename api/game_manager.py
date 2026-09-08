@@ -1800,7 +1800,7 @@ class GameManager:
                         wall_display=_blank_wall_display(),
                     )
                     audio.stop_bgm()
-                    play_effect_led(
+                    if not play_effect_led(
                         countdown_led,
                         game,
                         led_table,
@@ -1810,12 +1810,15 @@ class GameManager:
                         audio=audio,
                         hw_draw_fn=_hw_draw_effect,
                         countdown_ticks=True,
-                    )
+                    ):
+                        logger.error(
+                            f"Countdown effect missing/failed — no laser array animation: {countdown_led}"
+                        )
 
                 def _run_transition(path, phase_name):
                     game.accepting_input = False
                     audio.stop_bgm()
-                    play_effect_led(
+                    if not play_effect_led(
                         path,
                         game,
                         led_table,
@@ -1824,7 +1827,10 @@ class GameManager:
                         phase=phase_name,
                         audio=audio,
                         hw_draw_fn=_hw_draw_effect,
-                    )
+                    ):
+                        logger.error(
+                            f"Transition effect missing/failed ({phase_name}): {path}"
+                        )
                     hold_last_frame(game, led_table, _hw_draw_effect, phase_name)
                     audio.play_stinger()
 
