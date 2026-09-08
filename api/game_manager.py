@@ -8,10 +8,12 @@ import threading
 import time
 import asyncio
 import os
+import sys
 import math
 import json
 import shelve as _shelve
 from typing import Dict, Optional
+from unittest.mock import MagicMock
 from loguru import logger
 from .config import (
     GAME_TIMEOUT_SECONDS,
@@ -32,8 +34,6 @@ if USE_SERIAL_HD:
 # - encryption: hardware dongle check (yanqian.py checks connected pedrive at module level)
 # - led.led_control: hardware LED driver
 # - net: network communication
-import sys
-from unittest.mock import MagicMock
 
 # Mock ALL external dependencies (hardware, GUI, media, etc)
 # Standard approach: mock before any imports to prevent ModuleNotFoundError
