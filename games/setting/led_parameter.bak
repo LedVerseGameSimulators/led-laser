@@ -63,5 +63,5 @@
 'local_ip_address', (44032, 23)
 'local_ip_port', (44544, 14)
 'game_result_show_time', (45056, 5)
-'laser_detect_time', (45568, 12)
+'laser_detect_time', (45568, 21)
 'is_rgb', (46080, 4)
