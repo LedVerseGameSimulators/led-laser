@@ -238,7 +238,7 @@ _SETTINGS_DEFAULTS = {
     "leval_span": 0.9,         # leval_span_sw  (speed span)
     "tread_red_time": 0.01,    # debug: secs on red before life loss
     "life_value_count_time": 1.2,  # debug: min secs between life losses
-    "laser_detect_time": 0.25, # beam-broken duration before first floor hit
+    "laser_detect_time": 0.1,  # beam-broken duration before first floor hit
     "grid_rows": 6,            # value_high  — floor layout rows
     "grid_cols": 16,           # value_width — floor layout cols
     "wall_count": 14,          # len(wall_light_table)
@@ -876,8 +876,8 @@ class GameInstance:
         self._player_num = 1
         self.last_life_loss_time = 0.0             # for life_value_count_time gate
         self._life_count_time = _s["life_value_count_time"]
-        self._laser_detect_time = float(_s.get("laser_detect_time", 0.25))
-        self._life_hit_gap = 0.75                  # secs between floor hits while still blocked
+        self._laser_detect_time = float(_s.get("laser_detect_time", 0.1))
+        self._life_hit_gap = 0.2                   # secs between floor hits while still blocked
 
         # ── SESSION (5-min marathon) state ──────────────────────────────
         # Score + lives persist across levels; session ends on life<=0 or
