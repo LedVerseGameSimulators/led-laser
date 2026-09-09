@@ -26,9 +26,10 @@ from model.game import Game  # noqa: E402
 from model.group import Group  # noqa: E402
 from model.setting import Color, Setting  # noqa: E402
 
-# Venue emitters show gameplay as red/orange/yellow — pure green is often invisible.
+# Levels on this venue are authored mostly as Color.RED (254,0,0). The physical
+# beams look green, but the emitter controller keys off that same channel —
+# Color.GREEN (0,254,0) does not light the array. Effects must match levels.
 FX_COLOR = Color.RED
-FX_PULSE = Color.WHITE
 WORKING = [(0, 6), (0, 12)]  # cols 0-11 on 6 rows
 ROWS, COLS = 6, 16
 
@@ -79,7 +80,7 @@ _LETTER_O = [
 ]
 
 
-def _floor_group(name, cells, t0, t1, gid, color=None):
+def _floor_group(name, cells, t0, t1, gid):
     return Group(
         name=name,
         member=list(cells),
@@ -87,7 +88,7 @@ def _floor_group(name, cells, t0, t1, gid, color=None):
         start_time_sec=t0,
         end_time_min=0,
         end_time_sec=t1,
-        color=color if color is not None else FX_COLOR,
+        color=FX_COLOR,
         speed=0,
         direct=Setting.STATIC,
         edge_run_into=Setting.DISAPPEAR,
@@ -176,9 +177,7 @@ def _build_dict_group(phases):
     dg = {}
     for i, (name, cells, t0, t1) in enumerate(phases):
         if cells:
-            # Pulses / full fills use white for a bright flash; digits stay red.
-            color = FX_PULSE if name.startswith(("pulse", "full", "hold", "full_on")) else FX_COLOR
-            dg[i] = _floor_group(name, cells, t0, t1, i, color=color)
+            dg[i] = _floor_group(name, cells, t0, t1, i)
     return dg
 
 

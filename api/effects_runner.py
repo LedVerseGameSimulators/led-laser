@@ -70,13 +70,31 @@ def _publish_floor(game, led_table, floor_rows, floor_cols, phase, label=None):
     game.update_state(**kwargs)
 
 
-def hold_last_frame(game, led_table, hw_draw_fn, phase: str, seconds: float | None = None):
+def _snapshot_floor(led_table):
+    rows, cols = led_table.led_row, led_table.led_col
+    return [[list(led_table.led_table[r][c]) for c in range(cols)] for r in range(rows)]
+
+
+def _restore_floor(led_table, snap):
+    if not snap:
+        return
+    for r, row in enumerate(snap):
+        for c, cell in enumerate(row):
+            led_table.led_table[r][c] = list(cell)
+
+
+def hold_last_frame(game, led_table, hw_draw_fn, phase: str, seconds: float | None = None,
+                    floor_snapshot=None):
     hold = seconds if seconds is not None else STINGER_HOLD_SEC
     floor_rows, floor_cols = led_table.led_row, led_table.led_col
+    if floor_snapshot:
+        _restore_floor(led_table, floor_snapshot)
     # Slower when driving hardware — dense COM writes at 10ms flood the USB serial and lag the UI.
     tick = 0.045 if hw_draw_fn else 0.01
     end = time.time() + hold
     while time.time() < end and game.running:
+        if floor_snapshot:
+            _restore_floor(led_table, floor_snapshot)
         _publish_floor(game, led_table, floor_rows, floor_cols, phase)
         if hw_draw_fn:
             hw_draw_fn(led_table)
@@ -95,7 +113,12 @@ def play_effect_led(
     hw_draw_fn=None,
     countdown_ticks: bool = False,
 ) -> bool:
-    """Load and run one effect .led; returns False if load failed."""
+    """Load and run one effect .led; returns False if load failed.
+
+    Returns True on success. Last non-black floor snapshot is stored on
+    ``game._effect_last_floor`` for stinger hold (Play.update clears the
+    table on the final tick before stop).
+    """
     dg, _go = load_level_fn(path)
     if not dg:
         logger.warning(f"Effect load failed: {path}")
@@ -104,10 +127,12 @@ def play_effect_led(
     fast = _is_fast_effects()
     floor_rows, floor_cols = led_table.led_row, led_table.led_col
     last_label = None
+    last_nonzero_snap = None
 
     max_end = max((getattr(g, "end_time_sec", 0) for g in dg.values()), default=0.0)
 
     def _effect_cb(_play_self, _dgroup, _time_pass, total_pass):
+        nonlocal last_nonzero_snap
         if not game.running:
             return False
         if total_pass >= max_end:
@@ -122,6 +147,12 @@ def play_effect_led(
                     if label in ("3", "2", "1") and countdown_ticks:
                         audio.tick_on_second(int(label))
                     last_label = label
+            nonzero = sum(
+                1 for r in range(floor_rows) for c in range(floor_cols)
+                if any(led_table.led_table[r][c])
+            )
+            if nonzero:
+                last_nonzero_snap = _snapshot_floor(led_table)
             _publish_floor(game, led_table, floor_rows, floor_cols, phase, label)
             if hw_draw_fn:
                 hw_draw_fn(led_table)
@@ -141,4 +172,7 @@ def play_effect_led(
         play.running(dg)
     finally:
         play.callback = prev_cb
+        game._effect_last_floor = last_nonzero_snap
+        if last_nonzero_snap:
+            _restore_floor(led_table, last_nonzero_snap)
     return True
