@@ -562,6 +562,9 @@ class HeadlessLedTable:
         self.table_state_dark = [[0.0] * led_col for _ in range(led_row)]
         self.table_state_last = [[False] * led_col for _ in range(led_row)]
         self.last_trigger_span = [[0.0] * led_col for _ in range(led_row)]
+        # How long each cell has been continuously tagged red this appearance
+        # (emit lag: don't treat "just turned on" as a player break).
+        self.red_lit_age = [[0.0] * led_col for _ in range(led_row)]
         self.goal_color = None
         self.goal_color2 = None
         self.safe_color = None
@@ -878,6 +881,9 @@ class GameInstance:
         self._life_count_time = _s["life_value_count_time"]
         self._laser_detect_time = float(_s.get("laser_detect_time", 0.1))
         self._life_hit_gap = 0.05                  # secs between floor hits while still blocked
+        # Ignore beam-break on a cell until it has been red this long (pattern
+        # changes light new cells before COM9/COM6 settle → false deducts).
+        self._laser_emit_settle = float(os.environ.get("LASER_EMIT_SETTLE_SEC", "0.25"))
 
         # ── SESSION (5-min marathon) state ──────────────────────────────
         # Score + lives persist across levels; session ends on life<=0 or
@@ -1006,14 +1012,23 @@ class GameInstance:
         tsl = lt.table_state_light
         tsd = lt.table_state_dark
         lts = lt.last_trigger_span
+        if not hasattr(lt, "red_lit_age") or len(lt.red_lit_age) != rows:
+            lt.red_lit_age = [[0.0] * cols for _ in range(rows)]
+        red_age = lt.red_lit_age
         laser_tm = self._laser_detect_time
         hit_gap = self._life_hit_gap
+        settle = self._laser_emit_settle
 
         for i in range(rows):
             for j in range(cols):
                 tread = bool(table_state[i][j])
                 if red_tb[i][j]:
+                    red_age[i][j] += time_pass
                     if not green_tb[i][j]:
+                        # Wait for emitter settle before counting a break.
+                        if red_age[i][j] < settle:
+                            tsd[i][j] = 0.0
+                            continue
                         if tread:
                             tsd[i][j] += time_pass
                             if tsd[i][j] > 0.01 and (
@@ -1026,7 +1041,8 @@ class GameInstance:
                                     self.score -= 1
                                     logger.info(
                                         f"LASER_HIT cell=({i},{j}) tsd={tsd[i][j]:.3f}s "
-                                        f"detect_need={laser_tm:.3f}s gap={hit_gap:.1f}s "
+                                        f"detect_need={laser_tm:.3f}s gap={hit_gap:.3f}s "
+                                        f"red_age={red_age[i][j]:.3f}s "
                                         f"score={self.score} life={self.life} "
                                         f"total_pass={total_pass:.2f}"
                                     )
@@ -1039,6 +1055,7 @@ class GameInstance:
                             tsl[i][j] = hit_gap
                         tsd[i][j] = 0.0
                 elif blue_tb[i][j]:
+                    red_age[i][j] = 0.0
                     if not green_tb[i][j] and not red_tb[i][j]:
                         if tread:
                             tsd[i][j] += time_pass
@@ -1058,6 +1075,7 @@ class GameInstance:
                             tsl[i][j] = hit_gap
                         tsd[i][j] = 0.0
                 else:
+                    red_age[i][j] = 0.0
                     tsl[i][j] = 0.0
                     tsd[i][j] = 0.0
 
@@ -1858,6 +1876,7 @@ class GameManager:
                     lt.table_state_light = [[0.0] * cols for _ in range(rows)]
                     lt.table_state_dark = [[0.0] * cols for _ in range(rows)]
                     lt.last_trigger_span = [[0.0] * cols for _ in range(rows)]
+                    lt.red_lit_age = [[0.0] * cols for _ in range(rows)]
                     st = lt.get_state_table()
                     for r in range(rows):
                         for c in range(cols):
