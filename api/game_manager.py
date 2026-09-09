@@ -112,6 +112,9 @@ _hw_wall_ctrl = None
 _hw_wall_ready = False
 _hw_recv_ctrl = None
 _hw_recv_ready = False
+_hw_effect_draw_count = 0
+_hw_effect_last_nonzero = 0
+_hw_effect_last_phase = None
 
 # COM6: raw True = dark. Intact lit beam → False tread. Do not invert.
 _HW_RAW_TRUE_MEANS_INTACT = False
@@ -1776,12 +1779,27 @@ class GameManager:
                 game.update_state(backend_audio_active=audio.active)
 
                 def _hw_draw_effect(lt):
+                    global _hw_effect_draw_count, _hw_effect_last_nonzero, _hw_effect_last_phase
                     if not (USE_SERIAL_HD and _hw_led_control is not None):
+                        logger.warning(
+                            f"HW effect draw skipped: USE_SERIAL_HD={USE_SERIAL_HD} "
+                            f"ctrl={_hw_led_control is not None}"
+                        )
                         return
                     try:
                         rows, cols = lt.led_row, lt.led_col
                         _ld2 = [[_normalize_rgb(lt.led_table[r][c]) for c in range(cols)]
                                 for r in range(rows)]
+                        nonzero = sum(1 for row in _ld2 for cell in row if any(cell))
+                        _hw_effect_draw_count += 1
+                        _hw_effect_last_nonzero = nonzero
+                        _hw_effect_last_phase = game.current_state.get("phase")
+                        if _hw_effect_draw_count <= 3 or _hw_effect_draw_count % 50 == 0:
+                            logger.info(
+                                f"HW effect draw #{_hw_effect_draw_count} "
+                                f"phase={_hw_effect_last_phase} nonzero_cells={nonzero} "
+                                f"grid={rows}x{cols}"
+                            )
                         with _hw_serial_lock:
                             _hw_led_control.draw_screen_by_com(_hw_layout_type, _ld2)
                     except Exception as _hw_err:
@@ -1800,6 +1818,10 @@ class GameManager:
                         wall_display=_blank_wall_display(),
                     )
                     audio.stop_bgm()
+                    logger.info(
+                        f"Countdown effect path={countdown_led} exists={countdown_led.exists()} "
+                        f"size={countdown_led.stat().st_size if countdown_led.exists() else 0}"
+                    )
                     if not play_effect_led(
                         countdown_led,
                         game,
@@ -1813,6 +1835,11 @@ class GameManager:
                     ):
                         logger.error(
                             f"Countdown effect missing/failed — no laser array animation: {countdown_led}"
+                        )
+                    else:
+                        logger.info(
+                            f"Countdown effect finished HW draws={_hw_effect_draw_count} "
+                            f"last_nonzero={_hw_effect_last_nonzero}"
                         )
 
                 def _run_transition(path, phase_name):

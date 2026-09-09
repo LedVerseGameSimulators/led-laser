@@ -35,41 +35,45 @@ def _all_working():
     return [(r, c) for r in range(ROWS) for c in range(12)]
 
 
-# Simple digit bitmaps anchored near col 6, row 3
+def _all_grid():
+    return [(r, c) for r in range(ROWS) for c in range(COLS)]
+
+
+# Simple digit bitmaps anchored near col 6, row 2 (valid rows 0..5)
 _DIGIT_3 = [
-    (2, 5), (2, 6), (2, 7),
-    (3, 7),
-    (4, 5), (4, 6), (4, 7),
-    (5, 7),
-    (6, 5), (6, 6), (6, 7),
+    (1, 5), (1, 6), (1, 7),
+    (2, 7),
+    (3, 5), (3, 6), (3, 7),
+    (4, 7),
+    (5, 5), (5, 6), (5, 7),
 ]
 _DIGIT_2 = [
-    (2, 5), (2, 6), (2, 7),
-    (3, 5),
-    (4, 5), (4, 6), (4, 7),
-    (5, 7),
-    (6, 5), (6, 6), (6, 7),
+    (1, 5), (1, 6), (1, 7),
+    (2, 5),
+    (3, 5), (3, 6), (3, 7),
+    (4, 7),
+    (5, 5), (5, 6), (5, 7),
 ]
 _DIGIT_1 = [
-    (2, 6), (2, 7),
+    (1, 6), (1, 7),
+    (2, 6),
     (3, 6),
     (4, 6),
-    (5, 6),
-    (6, 5), (6, 6), (6, 7),
+    (5, 5), (5, 6), (5, 7),
 ]
 _LETTER_G = [
-    (2, 4), (2, 5), (2, 6),
-    (3, 4),
-    (4, 4), (4, 5), (4, 6), (4, 7),
-    (5, 4), (5, 7),
-    (6, 4), (6, 5), (6, 6),
+    (1, 4), (1, 5), (1, 6),
+    (2, 4),
+    (3, 4), (3, 5), (3, 6), (3, 7),
+    (4, 4), (4, 7),
+    (5, 4), (5, 5), (5, 6),
 ]
 _LETTER_O = [
-    (2, 9), (2, 10), (2, 11),
+    (1, 9), (1, 10), (1, 11),
+    (2, 9), (2, 11),
     (3, 9), (3, 11),
     (4, 9), (4, 11),
-    (5, 9), (5, 11),
-    (6, 9), (6, 10), (6, 11),
+    (5, 9), (5, 10), (5, 11),
 ]
 
 
@@ -101,10 +105,15 @@ def _countdown_phases(fast: bool):
             ("digit_1", _DIGIT_1, 0.10, 0.15),
             ("go", _LETTER_G + _LETTER_O, 0.15, 0.25),
         ]
+    full = _all_working()
+    pulse = 0.15
     return [
-        ("digit_3", _DIGIT_3, 0.0, 1.0),
-        ("digit_2", _DIGIT_2, 1.0, 2.0),
-        ("digit_1", _DIGIT_1, 2.0, 3.0),
+        ("digit_3", _DIGIT_3, 0.0, 1.0 - pulse),
+        ("pulse_3", full, 1.0 - pulse, 1.0),
+        ("digit_2", _DIGIT_2, 1.0, 2.0 - pulse),
+        ("pulse_2", full, 2.0 - pulse, 2.0),
+        ("digit_1", _DIGIT_1, 2.0, 3.0 - pulse),
+        ("pulse_1", full, 3.0 - pulse, 3.0),
         ("go", _LETTER_G + _LETTER_O, 3.0, 5.0),
     ]
 
@@ -115,20 +124,21 @@ def _clear_phases(fast: bool):
     cross_v = [(r, 6) for r in range(ROWS)]
     cross_h = [(3, c) for c in range(12)]
     full = _all_working()
+    full_grid = _all_grid()
     if fast:
         return [
             ("dot", center, 0.0, 0.05),
             ("plus", plus, 0.05, 0.10),
             ("cross", cross_v + cross_h, 0.10, 0.15),
             ("full", full, 0.15, 0.20),
-            ("hold", full, 0.20, 0.30),
+            ("hold", full_grid, 0.20, 0.30),
         ]
     return [
         ("dot", center, 0.0, 0.4),
         ("plus", plus, 0.4, 0.8),
         ("cross", cross_v + cross_h, 0.8, 1.2),
         ("full", full, 1.2, 1.6),
-        ("hold", full, 1.6, 3.0),
+        ("hold", full_grid, 1.6, 3.0),
     ]
 
 
