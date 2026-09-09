@@ -877,7 +877,7 @@ class GameInstance:
         self.last_life_loss_time = 0.0             # for life_value_count_time gate
         self._life_count_time = _s["life_value_count_time"]
         self._laser_detect_time = float(_s.get("laser_detect_time", 0.1))
-        self._life_hit_gap = 0.2                   # secs between floor hits while still blocked
+        self._life_hit_gap = 0.05                  # secs between floor hits while still blocked
 
         # ── SESSION (5-min marathon) state ──────────────────────────────
         # Score + lives persist across levels; session ends on life<=0 or
