@@ -1858,7 +1858,10 @@ class GameManager:
                         logger.error(
                             f"Transition effect missing/failed ({phase_name}): {path}"
                         )
-                    hold_last_frame(game, led_table, _hw_draw_effect, phase_name)
+                    hold_last_frame(
+                        game, led_table, _hw_draw_effect, phase_name,
+                        floor_snapshot=getattr(game, "_effect_last_floor", None),
+                    )
                     audio.play_stinger()
 
                 def _finish_session():
