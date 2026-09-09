@@ -73,12 +73,14 @@ def _publish_floor(game, led_table, floor_rows, floor_cols, phase, label=None):
 def hold_last_frame(game, led_table, hw_draw_fn, phase: str, seconds: float | None = None):
     hold = seconds if seconds is not None else STINGER_HOLD_SEC
     floor_rows, floor_cols = led_table.led_row, led_table.led_col
+    # Slower when driving hardware — dense COM writes at 10ms flood the USB serial and lag the UI.
+    tick = 0.045 if hw_draw_fn else 0.01
     end = time.time() + hold
     while time.time() < end and game.running:
         _publish_floor(game, led_table, floor_rows, floor_cols, phase)
         if hw_draw_fn:
             hw_draw_fn(led_table)
-        time.sleep(0.01)
+        time.sleep(tick)
 
 
 def play_effect_led(
@@ -123,7 +125,8 @@ def play_effect_led(
             _publish_floor(game, led_table, floor_rows, floor_cols, phase, label)
             if hw_draw_fn:
                 hw_draw_fn(led_table)
-            time.sleep(0.01)
+            # Match gameplay HW draw interval when serial is live (~45ms).
+            time.sleep(0.045 if hw_draw_fn else 0.01)
             return True
         except Exception as e:
             logger.error(f"Effect callback error: {e}")

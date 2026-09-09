@@ -16,7 +16,9 @@ class Communication:
         self.read_date_buffer = []
         try:
             self.main_engine = None
-            self.main_engine = serial.Serial((self.port), (self.bps), timeout=(self.timeout))
+            self.main_engine = serial.Serial(
+                self.port, self.bps, timeout=self.timeout, write_timeout=0.5
+            )
             self.Print_Name()
             if self.main_engine.is_open:
                 Ret = True
@@ -65,7 +67,12 @@ class Communication:
         return self.main_engine.readline()
 
     def Send_data(self, data):
-        self.main_engine.write(data)
+        try:
+            self.main_engine.write(data)
+        except serial.SerialTimeoutException:
+            loguru.logger.warning("serial write timeout on {}", self.port)
+        except Exception as e:
+            loguru.logger.warning("serial write failed on {}: {}", self.port, e)
 
     def Recive_data(self, way):
         while True:
