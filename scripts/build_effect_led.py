@@ -122,27 +122,26 @@ def _countdown_phases(fast: bool):
 
 
 def _clear_phases(fast: bool):
-    center = [(3, 6)]
-    plus = [(3, 6), (2, 6), (4, 6), (3, 5), (3, 7)]
-    cross_v = [(r, 6) for r in range(ROWS)]
-    cross_h = [(3, c) for c in range(12)]
-    full = _all_working()
-    full_grid = _all_grid()
+    """Simple all-on / all-off blink (~2s production), then countdown follows."""
+    full = _all_grid()
     if fast:
+        # Tiny fixture: one on/off cycle
         return [
-            ("dot", center, 0.0, 0.05),
-            ("plus", plus, 0.05, 0.10),
-            ("cross", cross_v + cross_h, 0.10, 0.15),
-            ("full", full, 0.15, 0.20),
-            ("hold", full_grid, 0.20, 0.30),
+            ("blink_on", full, 0.0, 0.05),
+            ("blink_off", [], 0.05, 0.10),
+            ("blink_on2", full, 0.10, 0.15),
+            ("blink_off2", [], 0.15, 0.20),
         ]
-    return [
-        ("dot", center, 0.0, 0.4),
-        ("plus", plus, 0.4, 0.8),
-        ("cross", cross_v + cross_h, 0.8, 1.2),
-        ("full", full, 1.2, 1.6),
-        ("hold", full_grid, 1.6, 3.0),
-    ]
+    # 2.0s total: 0.25s on / 0.25s off × 4
+    phases = []
+    t = 0.0
+    half = 0.25
+    for i in range(4):
+        phases.append((f"blink_on_{i}", full, t, t + half))
+        t += half
+        phases.append((f"blink_off_{i}", [], t, t + half))
+        t += half
+    return phases
 
 
 def _fail_phases(fast: bool):
@@ -176,8 +175,9 @@ def _fail_phases(fast: bool):
 def _build_dict_group(phases):
     dg = {}
     for i, (name, cells, t0, t1) in enumerate(phases):
-        if cells:
-            dg[i] = _floor_group(name, cells, t0, t1, i)
+        # Keep empty "off" timing groups so max_end includes the dark gaps.
+        if cells or t1 > t0:
+            dg[i] = _floor_group(name, cells or [], t0, t1, i)
     return dg
 
 

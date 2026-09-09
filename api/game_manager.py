@@ -225,6 +225,7 @@ _LASER_COLOR_ARR = [
     (254, 254, 254), # white
 ]
 _LASER_HAZARD_COLORS = {(254, 0, 0), (240, 0, 0)}  # RED variants
+WALL_TAP_SCORE = 10
 
 # Settings from Laser led_parameter shelve.
 _LED_PARAM  = str(GAMES_ROOT / "setting" / "led_parameter")
@@ -991,6 +992,8 @@ class GameInstance:
     def vary_with_color_state(self, dict_group, time_pass: float, total_pass: float):
         """Laser floor life/score from tread + red_table/blue_table flags.
         Ported from gui_editor_game.vary_with_color_state (hardware table_state)."""
+        if not self.accepting_input or self.current_state.get("phase") != "playing":
+            return
         lt = self.led_table
         if lt is None:
             return
@@ -1020,7 +1023,7 @@ class GameInstance:
                                 if total_pass - lts[i][j] >= hit_gap:
                                     lts[i][j] = total_pass
                                     self.life = max(0, self.life - 1)
-                                    self.score = max(0, self.score - 1)
+                                    self.score -= 1
                         else:
                             tsd[i][j] = 0.0
                     else:
@@ -1054,6 +1057,8 @@ class GameInstance:
 
     def score_wall_light_groups(self, dict_group, total_pass: float):
         """Wall button scoring — calculation_one_second_wall_light_dict_group."""
+        if not self.accepting_input or self.current_state.get("phase") != "playing":
+            return
         lt = self.led_table
         if lt is None or not dict_group:
             return
@@ -1077,20 +1082,20 @@ class GameInstance:
                 if wi < 0 or wi >= len(arr_state):
                     continue
                 if arr_state[wi]:
-                    self.score += 1
+                    self.score += WALL_TAP_SCORE
                     self._consume_wall(wi, total_pass)
 
     def try_score_wall(self, wi: int, total_pass: float):
         """Type-aware scoring for a press on wall button index wi."""
+        if not self.accepting_input or self.current_state.get("phase") != "playing":
+            return
         # Red hazard: penalty + HP loss (gated). Not edge-limited by
         # scored_active (standing on red keeps hurting, rate-limited by time).
         if wi in self.red_walls:
             now = time.time()
             if now - self.last_life_loss_time >= self._life_count_time:
                 self.score -= 1
-                if self.score < 0:
-                    self.score = 0
-                self.life -= 1
+                self.life = max(0, self.life - 1)
                 self.last_life_loss_time = now
             return
         # DEDUCT tile: -1 SCORE only (NO life loss), then consume.
@@ -1099,13 +1104,11 @@ class GameInstance:
         if wi in self.deduct_walls and wi not in self.scored_active:
             self.scored_active.add(wi)
             self.score -= 1
-            if self.score < 0:
-                self.score = 0
             self._consume_wall(wi, total_pass)
             return
         if wi in self.goal_walls and wi not in self.scored_active:
             self.scored_active.add(wi)
-            self.score += 1
+            self.score += WALL_TAP_SCORE
             self._consume_wall(wi, total_pass)
             return
 
@@ -1764,7 +1767,6 @@ class GameManager:
                 from .audio_manager import create_audio_manager
                 from .effects_runner import (
                     effects_dir,
-                    hold_last_frame,
                     play_effect_led,
                 )
 
@@ -1842,6 +1844,19 @@ class GameManager:
                             f"last_nonzero={_hw_effect_last_nonzero}"
                         )
 
+                def _reset_hazard_timers():
+                    if not game.led_table:
+                        return
+                    lt = game.led_table
+                    rows, cols = lt.led_row, lt.led_col
+                    lt.table_state_light = [[0.0] * cols for _ in range(rows)]
+                    lt.table_state_dark = [[0.0] * cols for _ in range(rows)]
+                    lt.last_trigger_span = [[0.0] * cols for _ in range(rows)]
+                    st = lt.get_state_table()
+                    for r in range(rows):
+                        for c in range(cols):
+                            st[r][c] = False
+
                 def _run_transition(path, phase_name):
                     game.accepting_input = False
                     audio.stop_bgm()
@@ -1858,11 +1873,10 @@ class GameManager:
                         logger.error(
                             f"Transition effect missing/failed ({phase_name}): {path}"
                         )
-                    hold_last_frame(
-                        game, led_table, _hw_draw_effect, phase_name,
-                        floor_snapshot=getattr(game, "_effect_last_floor", None),
-                    )
+                    # No stinger hold — go straight to countdown / session end after (a).
                     audio.play_stinger()
+                    _reset_hazard_timers()
+                    game._effect_last_floor = None
 
                 def _finish_session():
                     if game.running:
@@ -1876,15 +1890,6 @@ class GameManager:
                         floor_display=[[0, 0, 0] for _ in range(rows * cols)],
                     )
                     _hw_blank_floor(led_table)
-
-                def _reset_hazard_timers():
-                    if not game.led_table:
-                        return
-                    lt = game.led_table
-                    rows, cols = lt.led_row, lt.led_col
-                    lt.table_state_light = [[0.0] * cols for _ in range(rows)]
-                    lt.table_state_dark = [[0.0] * cols for _ in range(rows)]
-                    lt.last_trigger_span = [[0.0] * cols for _ in range(rows)]
 
                 play.callback = _frame_callback
                 sequence_exhausted_after_clear = False
@@ -1914,6 +1919,7 @@ class GameManager:
                             break
 
                         _run_countdown()
+                        _reset_hazard_timers()
                         if game._session_over or not game.running:
                             break
 
@@ -1993,6 +1999,7 @@ class GameManager:
 
                 if not sequence_exhausted_after_clear and game._session_over:
                     pass  # _finish_session already ran for timeout/out_of_life
+
 
                 # Session finished (timer/lives/sequence end).
                 game._session_over = True
