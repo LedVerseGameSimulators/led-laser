@@ -238,7 +238,7 @@ _SETTINGS_DEFAULTS = {
     "leval_span": 0.9,         # leval_span_sw  (speed span)
     "tread_red_time": 0.01,    # debug: secs on red before life loss
     "life_value_count_time": 1.2,  # debug: min secs between life losses
-    "laser_detect_time": 0.1,  # beam-broken duration before first floor hit
+    "laser_detect_time": 0.15, # beam-broken duration before first floor hit
     "grid_rows": 6,            # value_high  — floor layout rows
     "grid_cols": 16,           # value_width — floor layout cols
     "wall_count": 14,          # len(wall_light_table)
@@ -879,8 +879,11 @@ class GameInstance:
         self._player_num = 1
         self.last_life_loss_time = 0.0             # for life_value_count_time gate
         self._life_count_time = _s["life_value_count_time"]
-        self._laser_detect_time = float(_s.get("laser_detect_time", 0.1))
-        self._life_hit_gap = 0.05                  # secs between floor hits while still blocked
+        self._laser_detect_time = float(_s.get("laser_detect_time", 0.15))
+        # First −1 after this much continuous break; later −1s while still blocked.
+        self._laser_first_detect = 0.15
+        self._laser_repeat_gap = 0.5
+        self._life_hit_gap = self._laser_repeat_gap  # used by green/blue light-timer paths
         # Ignore beam-break on a cell until it has been red this long (pattern
         # changes light new cells before COM9/COM6 settle → false deducts).
         self._laser_emit_settle = float(os.environ.get("LASER_EMIT_SETTLE_SEC", "0.25"))
@@ -1015,9 +1018,11 @@ class GameInstance:
         if not hasattr(lt, "red_lit_age") or len(lt.red_lit_age) != rows:
             lt.red_lit_age = [[0.0] * cols for _ in range(rows)]
         red_age = lt.red_lit_age
-        laser_tm = self._laser_detect_time
+        first_detect = self._laser_first_detect
+        repeat_gap = self._laser_repeat_gap
         hit_gap = self._life_hit_gap
         settle = self._laser_emit_settle
+        laser_tm = self._laser_detect_time  # blue-score path still uses settings detect
 
         for i in range(rows):
             for j in range(cols):
@@ -1031,29 +1036,43 @@ class GameInstance:
                             continue
                         if tread:
                             tsd[i][j] += time_pass
-                            if tsd[i][j] > 0.01 and (
-                                tsl[i][j] > hit_gap or tsd[i][j] >= laser_tm
-                            ):
-                                tsl[i][j] = 0.0
-                                if total_pass - lts[i][j] >= hit_gap:
+                            # First −1 this unbroken stand: 0.15s dark.
+                            # Later −1s while still blocked: every 0.5s.
+                            already_hit = lts[i][j] > 0.0
+                            if not already_hit:
+                                if tsd[i][j] >= first_detect:
                                     lts[i][j] = total_pass
                                     self.life = max(0, self.life - 1)
                                     self.score -= 1
                                     logger.info(
                                         f"LASER_HIT cell=({i},{j}) tsd={tsd[i][j]:.3f}s "
-                                        f"detect_need={laser_tm:.3f}s gap={hit_gap:.3f}s "
+                                        f"first=True need={first_detect:.3f}s "
                                         f"red_age={red_age[i][j]:.3f}s "
                                         f"score={self.score} life={self.life} "
                                         f"total_pass={total_pass:.2f}"
                                     )
+                            elif total_pass - lts[i][j] >= repeat_gap:
+                                lts[i][j] = total_pass
+                                self.life = max(0, self.life - 1)
+                                self.score -= 1
+                                logger.info(
+                                    f"LASER_HIT cell=({i},{j}) tsd={tsd[i][j]:.3f}s "
+                                    f"first=False need={repeat_gap:.3f}s "
+                                    f"red_age={red_age[i][j]:.3f}s "
+                                    f"score={self.score} life={self.life} "
+                                    f"total_pass={total_pass:.2f}"
+                                )
                         else:
+                            # Beam intact again — next break starts at 0.15s.
                             tsd[i][j] = 0.0
+                            lts[i][j] = 0.0
                     else:
                         if tread:
                             tsl[i][j] += time_pass
                         if tsl[i][j] > hit_gap:
                             tsl[i][j] = hit_gap
                         tsd[i][j] = 0.0
+                        lts[i][j] = 0.0
                 elif blue_tb[i][j]:
                     red_age[i][j] = 0.0
                     if not green_tb[i][j] and not red_tb[i][j]:
@@ -1068,6 +1087,7 @@ class GameInstance:
                                     self.score += 1
                         else:
                             tsd[i][j] = 0.0
+                            lts[i][j] = 0.0
                     else:
                         if tread:
                             tsl[i][j] += time_pass
@@ -1078,6 +1098,7 @@ class GameInstance:
                     red_age[i][j] = 0.0
                     tsl[i][j] = 0.0
                     tsd[i][j] = 0.0
+                    lts[i][j] = 0.0
 
     def score_wall_light_groups(self, dict_group, total_pass: float):
         """Wall button scoring — calculation_one_second_wall_light_dict_group."""
