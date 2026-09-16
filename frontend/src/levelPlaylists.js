@@ -4,7 +4,7 @@
  * Backend still receives real file ids (stems); UI may show 1..N.
  *
  * Modes: Quick Play + Tournament only (no Team Battle product).
- * Prefer clean A*/B*/C* stems — no Chinese test files; Challenge only in tournament.
+ * Prefer clean A/B/C stems — no Chinese test files; Challenge only in tournament.
  */
 
 /** Quick Play (1P) — 20 medium-ish placeholders from A / B / C. */
