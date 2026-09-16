@@ -258,7 +258,7 @@ export default function SimulatorScreen({ config, onGameEnd }) {
         <div className="card">
           <h2>Starting Game...</h2>
           <p style={{ textAlign: 'center', marginTop: '20px' }}>
-            {config.game.toUpperCase()} - Level {config.level} ({config.difficulty})
+            Laser Escape — Level {formatLevelLabel(config.playMode, config.level)} ({config.difficulty})
           </p>
         </div>
       </div>
@@ -284,29 +284,24 @@ export default function SimulatorScreen({ config, onGameEnd }) {
   const currentLevelLabel = formatLevelLabel(config.playMode, currentLevelRaw)
   const phase = gameState?.phase || (isOver ? 'session_end' : booting ? 'idle' : 'playing')
   const inputLocked = isInputBlocked(gameState)
-  const overlayCountdownText = countdownDisplay(gameState)
+  const countdownLabel = countdownDisplay(gameState)
+  const countdownStepClass =
+    countdownLabel === 'GO!'
+      ? 'go'
+      : /^\d+$/.test(String(countdownLabel || ''))
+        ? String(countdownLabel)
+        : 'pending'
+  const phaseOverlay = showPhaseOverlay(gameState) && !isOver
   const isMulti = !!(gameState?.multiplayer || config.playerCount === 2)
   const p1Name = config.playerName || 'Player 1'
   const p2Name = config.playerName2 || 'Player 2'
-  const hudStatusClass = isOver ? 'ended' : phase === 'playing' ? 'playing' : 'transition'
-  const hudStatusLabel = isOver
-    ? '● ENDED'
-    : phase === 'playing'
-      ? '● PLAYING'
-      : `● ${String(phase).replace(/_/g, ' ').toUpperCase()}`
-
-  const iframeClass = [
-    'simulator-iframe',
-    showSim ? '' : 'simulator-iframe--hidden',
-    showSim && inputLocked ? 'simulator-iframe--blocked' : '',
-  ].filter(Boolean).join(' ')
 
   return (
     <div className="simulator-container">
       <div className="simulator-header">
         <div>
           <h2 style={{ margin: 0 }}>
-            {config.game.toUpperCase()} - Level {currentLevelLabel}
+            Laser Escape — Level {currentLevelLabel}
           </h2>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             {config.playMode === 'group' ? 'Tournament' : 'Quick Play'}
@@ -333,44 +328,49 @@ export default function SimulatorScreen({ config, onGameEnd }) {
       </div>
 
       <div className="simulator-stage">
-        {booting && (
-          <div className="boot-banner">
-            <h2>Starting Game...</h2>
-            <p>{config.game.toUpperCase()} - Level {formatLevelLabel(config.playMode, config.level)}</p>
-          </div>
-        )}
-
         <iframe
           ref={iframeRef}
-          className={iframeClass}
+          className={`simulator-iframe ${showSim ? '' : 'simulator-iframe--hidden'}`}
           src={gameId ? `${WS_BRIDGE_URL}?game_id=${gameId}` : WS_BRIDGE_URL}
-          style={{ pointerEvents: showSim && !inputLocked ? 'auto' : 'none' }}
           title="Game Simulator"
         />
 
-        {showPhaseOverlay(gameState) && phase === 'countdown' && !isOver && overlayCountdownText && (
-          <div className="phase-countdown-overlay" aria-live="polite">
-            <div className={`countdown-num${overlayCountdownText === 'GO!' ? ' go' : ''}`}>
-              {overlayCountdownText}
+        {phaseOverlay && gameState?.phase === 'countdown' && (
+          <div
+            className={`phase-countdown-overlay step-${countdownStepClass}`}
+            aria-live="polite"
+          >
+            <div className={`phase-countdown-digit${countdownLabel === 'GO!' ? ' go' : ''}`}>
+              {countdownLabel || '…'}
             </div>
-            <div className="countdown-meta">Level {currentLevelLabel}</div>
+            <div className="phase-countdown-level">Level {currentLevelLabel}</div>
           </div>
         )}
 
-        {(phase === 'level_clear' || phase === 'level_fail') && !isOver && (
-          <div className={`phase-overlay ${phase}-overlay`} aria-live="polite">
-            {phase === 'level_clear' ? 'Level clear!' : 'Try again!'}
+        {phaseOverlay && gameState?.phase === 'level_clear' && (
+          <div className="phase-transition-overlay level-clear-overlay" aria-live="polite">
+            Level clear!
+          </div>
+        )}
+
+        {phaseOverlay && gameState?.phase === 'level_fail' && (
+          <div className="phase-transition-overlay level-fail-overlay" aria-live="polite">
+            Try again!
           </div>
         )}
 
         {!showSim && (
-          <div className="play-hud">
+          <div className={`play-hud ${inputLocked ? 'play-hud--locked' : ''}`}>
             <div className="hud-board">
               <div className="hud-meta">
                 <span className="hud-level">Level {currentLevelLabel}</span>
-                <span className="hud-diff">{config.difficulty?.toUpperCase()}</span>
-                <span className={`hud-status ${hudStatusClass}`}>
-                  {hudStatusLabel}
+                <span className="hud-diff">MEDIUM</span>
+                <span className={`hud-status ${isOver ? 'ended' : phase === 'playing' ? 'playing' : 'transition'}`}>
+                  {isOver
+                    ? '● ENDED'
+                    : phase === 'playing'
+                      ? '● PLAYING'
+                      : `● ${String(phase).replace(/_/g, ' ').toUpperCase()}`}
                 </span>
               </div>
 
