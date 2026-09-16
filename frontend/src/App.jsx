@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'react'
-import LoginScreen        from './screens/LoginScreen'
-import GameSelectionScreen from './screens/GameSelectionScreen'
-import GameSettingsScreen  from './screens/GameSettingsScreen'
-import SimulatorScreen     from './screens/SimulatorScreen'
-import ResultScreen        from './screens/ResultScreen'
+import SetupScreen     from './screens/SetupScreen'
+import LoginScreen     from './screens/LoginScreen'
+import CountdownScreen from './screens/CountdownScreen'
+import SimulatorScreen from './screens/SimulatorScreen'
+import ResultScreen    from './screens/ResultScreen'
 
 import { API_URL } from './config'
+import VideoBackground from './components/VideoBackground'
 
 const S = {
-  GAME_SELECT: 'game_select',  // pick play mode (single / group)
-  SETTINGS:    'settings',     // pick category + level + difficulty
-  LOGIN:       'login',        // enter card ID
-  SIMULATOR:   'simulator',
-  RESULT:      'result',
+  SETUP:     'setup',      // Mode + Level (one screen)
+  LOGIN:     'login',
+  COUNTDOWN: 'countdown',
+  SIMULATOR: 'simulator',
+  RESULT:    'result',
 }
 
 const DEFAULT_CONFIG = {
@@ -30,18 +31,17 @@ const DEFAULT_CONFIG = {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState(S.GAME_SELECT)
+  const [screen, setScreen] = useState(S.SETUP)
   const [gameConfig, setGameConfig] = useState(DEFAULT_CONFIG)
   const [result, setResult] = useState(null)
   const [booting, setBooting] = useState(true)
 
-  // Resume running game on reload
   useEffect(() => {
     fetch(`${API_URL}/active-game`)
-      .then(r => r.json())
-      .then(d => {
+      .then((r) => r.json())
+      .then((d) => {
         if (d.success) {
-          setGameConfig(prev => ({
+          setGameConfig((prev) => ({
             ...prev,
             cardId: d.card_id,
             level: d.level,
@@ -55,48 +55,29 @@ export default function App() {
       .finally(() => setBooting(false))
   }, [])
 
-  // Step 1: play mode (single | group)
-  const handleModeSelect = (mode) => {
-    if (mode === 'group') {
-      setGameConfig(prev => ({
-        ...prev,
-        game: 'laser',
-        playMode: 'group',
-        playerCount: 1,
-        level: 'auto',
-        difficulty: 'normal',
-        resumeGameId: undefined,
-      }))
-      setScreen(S.LOGIN)
-      return
-    }
-
-    setGameConfig(prev => ({
+  // Setup confirmed (mode + level together)
+  const handleSetup = ({ game, level, playerCount, difficulty, playMode }) => {
+    setGameConfig((prev) => ({
       ...prev,
-      game: 'laser',
-      playMode: 'single',
-      playerCount: 1,
-    }))
-    setScreen(S.SETTINGS)
-  }
-
-  // Step 2: settings confirmed
-  const handleSettings = ({ game, level, playerCount, difficulty }) => {
-    setGameConfig(prev => ({
-      ...prev,
-      game: game || prev.game || 'laser',
+      game,
       level,
       playerCount,
       difficulty,
+      playMode: playMode || prev.playMode,
       resumeGameId: undefined,
     }))
     setScreen(S.LOGIN)
   }
 
-  // Step 3: login
-  const handleLogin = (cardId, cardId2, playerName = '', playerName2 = '',
-                       minutesRemaining = null, minutesRemaining2 = null) => {
-    setGameConfig(prev => ({
+  const handleLogin = (
+    cardId,
+    cardId2,
+    playerName = '',
+    playerName2 = '',
+    minutesRemaining = null,
+    minutesRemaining2 = null
+  ) => {
+    setGameConfig((prev) => ({
       ...prev,
       cardId: cardId || '',
       cardId2: cardId2 || '',
@@ -105,8 +86,10 @@ export default function App() {
       minutesRemaining,
       minutesRemaining2,
     }))
-    setScreen(S.SIMULATOR)
+    setScreen(S.COUNTDOWN)
   }
+
+  const handleCountdownDone = () => setScreen(S.SIMULATOR)
 
   const handleGameEnd = (finalResult) => {
     setResult(finalResult)
@@ -115,42 +98,41 @@ export default function App() {
 
   const handlePlayAgain = () => {
     setResult(null)
-    setScreen(gameConfig.playMode === 'group' ? S.GAME_SELECT : S.SETTINGS)
+    setScreen(S.SETUP)
   }
 
   const handleLogout = () => {
     setResult(null)
     setGameConfig({ ...DEFAULT_CONFIG })
-    setScreen(S.GAME_SELECT)
+    setScreen(S.SETUP)
   }
 
-  if (booting) return (
-    <div className="screen">
-      <div className="card"><h2 style={{ textAlign: 'center' }}>Loading…</h2></div>
-    </div>
-  )
+  if (booting) {
+    return (
+      <div className="screen screen-with-video">
+        <VideoBackground />
+        <div className="card">
+          <h2 style={{ textAlign: 'center' }}>Loading…</h2>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>
-      {screen === S.GAME_SELECT && (
-        <GameSelectionScreen onSelect={handleModeSelect} />
-      )}
-      {screen === S.SETTINGS && (
-        <GameSettingsScreen
-          game={gameConfig.game}
-          onConfirm={handleSettings}
-          onBack={() => setScreen(S.GAME_SELECT)}
-        />
+      {screen === S.SETUP && (
+        <SetupScreen game={gameConfig.game} onConfirm={handleSetup} />
       )}
       {screen === S.LOGIN && (
         <LoginScreen
-          gameTitle="🔴 Laser Trap"
+          gameTitle="Laser Escape"
           playerCount={gameConfig.playerCount}
           onLogin={handleLogin}
-          onBack={() => setScreen(
-            gameConfig.playMode === 'group' ? S.GAME_SELECT : S.SETTINGS
-          )}
+          onBack={() => setScreen(S.SETUP)}
         />
+      )}
+      {screen === S.COUNTDOWN && (
+        <CountdownScreen onDone={handleCountdownDone} />
       )}
       {screen === S.SIMULATOR && (
         <SimulatorScreen config={gameConfig} onGameEnd={handleGameEnd} />

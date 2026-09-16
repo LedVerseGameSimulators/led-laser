@@ -37,6 +37,23 @@ export const HOW_TO = {
     'A fixed Extreme set runs in order. No level pick — play through 1, 2, 3… as a group session.',
 }
 
+/** Bullet copy for Setup screen (mock-style how-to). */
+export const HOW_TO_BULLETS = {
+  single: [
+    'Dodge moving lasers and stay in the safe lanes.',
+    'Hit lit targets before they expire.',
+    'Clear each wave to advance to the next level.',
+  ],
+  multi: [
+    'Team Battle is not offered on Laser Escape.',
+  ],
+  group: [
+    'A fixed tournament set runs in order — no level pick.',
+    'Play through levels 1, 2, 3… as a group session.',
+    'Clear each stage to keep moving.',
+  ],
+}
+
 export function playlistForMode(playMode) {
   if (playMode === 'multi') return TEAM_BATTLE_LEVELS
   if (playMode === 'group') return TOURNAMENT_LEVEL_ORDER

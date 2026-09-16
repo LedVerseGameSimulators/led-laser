@@ -155,7 +155,8 @@ export default function SimulatorScreen({ config, onGameEnd }) {
     const endStem = st.current_level ?? startStem
     const levelLabel = formatLevelLabel(config.playMode, startStem)
     const endLevelLabel = formatLevelLabel(config.playMode, endStem)
-    // Guests (no RFID card): kiosk results only — do not write Hex DB / RFID.
+    // Guests (no RFID): skip save-score only. Always stop the backend game
+    // so BGM / session teardown still run.
     const hasRfidCard = Boolean(config.cardId && String(config.cardId).trim())
 
     try {
@@ -166,9 +167,9 @@ export default function SimulatorScreen({ config, onGameEnd }) {
           body: JSON.stringify({
             card_id: config.cardId,
             card_id2: config.cardId2 || null,
-            level: levelLabel,              // FE display → Hex DB → RFID LB
+            level: levelLabel,
             end_level: endLevelLabel,
-            level_file: startStem,          // real stem (ops/debug only)
+            level_file: startStem,
             end_level_file: endStem,
             score: finalScore,
             score2: finalScore2,
@@ -182,12 +183,17 @@ export default function SimulatorScreen({ config, onGameEnd }) {
             levels_cleared: st.levels_cleared ?? 0,
             difficulty: config.difficulty ?? '',
             started_at: st.started_at ?? '',
+            player_name: config.playerName || '',
+            player_name2: config.playerName2 || '',
           })
         })
+      }
+      // Always stop game (BGM + floor blank) — guests too
+      if (id) {
         await fetch(`${API_URL}/logout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ card_id: config.cardId, game_id: id })
+          body: JSON.stringify({ card_id: config.cardId || '', game_id: id })
         })
       }
     } catch (err) {
