@@ -38,6 +38,7 @@
 ## Non-FE leftovers
 
 - [ ] No multiplayer / Team Battle for Laser — by design
+- [x] **2P Phase A skipped** — Laser out of scope (`PLAN_MULTIPLAYER_SCORING_AND_HUD`; no hazard/swatch work here)
 - [ ] Effects on HW — treated done onsite; reopen only on regression
 - [ ] Optional: delete dead FE screens
 
