@@ -19,12 +19,16 @@ REM ping-delay works even when stdin is redirected (timeout does not)
 ping -n 2 127.0.0.1 >nul
 
 echo Stopping floor engine, bridge, and interface...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ports=8001,8768,5174; Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $ports -contains $_.LocalPort } | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 taskkill /FI "WINDOWTITLE eq LED Laser API*" /T /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq LED Laser Bridge*" /T /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq LED Laser UI*" /T /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq LED Laser Frontend*" /T /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq LED Laser ws_bridge*" /T /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Activerse Kiosk Exit*" /T /F >nul 2>&1
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\kiosk\kill-kiosk-browser.ps1" -ProfileSlug laser
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ports=8001,8768,5174; Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $ports -contains $_.LocalPort } | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 
 if /i "%QUIET%"=="/quiet" (
   endlocal

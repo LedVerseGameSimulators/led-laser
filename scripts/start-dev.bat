@@ -1,6 +1,7 @@
 @echo off
 REM Start Laser dev stack (API 8001, ws_bridge 8768, UI 5174).
 setlocal
+set ACTIVERSE_KIOSK=0
 cd /d "%~dp0.."
 
 echo ==^> LED Laser dev stack from %CD%

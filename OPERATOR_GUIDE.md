@@ -6,11 +6,14 @@ Daily operation only. No development commands.
 
 1. Power on the LED floor controllers and USB serial cables.
 2. Double-click **`START_GAME.bat`**.
-3. Wait for three minimized windows (API / Bridge / UI).
-4. Browser opens at <http://localhost:5174>.
-5. Leave those windows open while guests play.
+3. Wait until you see **LED LASER is running (HARDWARE)**.
+4. The browser opens in **fullscreen kiosk** at **http://127.0.0.1:5174/**.
+5. **Ctrl+Shift+K** exits fullscreen only (the game keeps running). Use **`STOP_GAME.bat`** to stop the game.
+6. Leave the minimized service windows open while guests play.
 
 First start on a new PC may install packages and take a few minutes.
+
+**Engineers / debug:** use `scripts\start-dev.bat` (normal browser, Vite dev server — not kiosk).
 
 ## Stop the game
 
@@ -55,3 +58,11 @@ Ask tech to check `frontend\.env` has the correct RFID PC IP:
 - Do not edit `games\setting`.
 - Do not unplug USB while a game is running.
 - Use `STOP_GAME.bat` at end of day.
+
+## Packaging / updates
+
+- Download the latest release zip from **GitHub Releases** (operators do not need git).
+- Extract the zip to a folder on the PC.
+- Double-click **`LED Laser.exe`** (or **`START_GAME.bat`** — both start the game the same way).
+- **First time on a new PC:** a technician runs **`SETUP_FIRST_TIME.bat`** once to install Python packages and frontend dependencies. The PC must already have **Python 3.11**, **Node.js LTS**, and **Chrome or Edge** installed.
+- **Updates:** stop the game with `STOP_GAME.bat`, then replace the folder with the new release zip (or drop in the new `LED Laser.exe`).

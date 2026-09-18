@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Start Laser Trap dev stack (API 8003, ws_bridge 8768, UI 5176).
+# Start Laser dev stack (API 8001, ws_bridge 8768, UI 5174).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-export API_PORT=8003
+export ACTIVERSE_KIOSK=0
+export API_PORT=8001
 export WS_BRIDGE_PORT=8768
-UI_PORT=5176
+UI_PORT=5174
 
 kill_port() {
   local port=$1
@@ -21,7 +22,7 @@ kill_port() {
   fi
 }
 
-echo "==> Laser Trap dev stack from $ROOT"
+echo "==> LED Laser dev stack from $ROOT"
 kill_port "$API_PORT"
 kill_port "$WS_BRIDGE_PORT"
 kill_port "$UI_PORT"
@@ -45,9 +46,9 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo ""
-echo "Laser Trap ready:"
+echo "Laser ready:"
 echo "  UI:        http://localhost:$UI_PORT"
 echo "  API:       http://localhost:$API_PORT"
-echo "  Simulator: http://localhost:$WS_BRIDGE_PORT"
+echo "  ws_bridge: http://localhost:$WS_BRIDGE_PORT"
 echo "Press Ctrl+C to stop."
 wait

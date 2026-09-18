@@ -1,9 +1,11 @@
 @echo off
 setlocal EnableExtensions
-title LED Laser Launcher
 cd /d "%~dp0"
 set "ROOT=%CD%"
 
+if not defined ACTIVERSE_KIOSK set "ACTIVERSE_KIOSK=1"
+
+title LED Laser Launcher
 echo.
 echo ==========================================
 echo          LED LASER - START GAME
@@ -68,16 +70,37 @@ ping -n 2 127.0.0.1 >nul
 echo Starting floor engine (hardware mode)...
 REM /MIN before title; no space before & after set value (avoids USE_SERIAL_HD=1[space])
 start /min "LED Laser API" cmd.exe /k "cd /d %ROOT% & set USE_SERIAL_HD=1& python -m uvicorn api.main:app --host 0.0.0.0 --port 8001"
+ping -n 4 127.0.0.1 >nul
 
 echo Starting simulator bridge...
 start /min "LED Laser Bridge" cmd.exe /k "cd /d %ROOT% & set API_PORT=8001& set WS_BRIDGE_PORT=8768& python ws_bridge.py"
+ping -n 3 127.0.0.1 >nul
 
 echo Starting operator interface...
-start /min "LED Laser UI" cmd.exe /k "cd /d %ROOT%\frontend & npm run dev"
+set "WINDOW_TITLE_UI=LED Laser UI"
+call "%ROOT%\scripts\kiosk\run-ui-prod.bat" 5174
+if errorlevel 1 goto :failed
+ping -n 5 127.0.0.1 >nul
 
-echo Waiting for services...
-ping -n 6 127.0.0.1 >nul
+echo Waiting for game UI...
+set /a _tries=0
 
+:wait_ui
+set /a _tries+=1
+powershell -NoProfile -Command "try { (Invoke-WebRequest -Uri 'http://127.0.0.1:5174/' -UseBasicParsing -TimeoutSec 2).StatusCode } catch { exit 1 }" >nul 2>&1
+if not errorlevel 1 goto ui_ready
+if %_tries% GEQ 30 goto ui_timeout
+ping -n 2 127.0.0.1 >nul
+goto wait_ui
+
+:ui_timeout
+echo WARNING: UI did not respond yet. Opening browser anyway.
+goto check_api
+
+:ui_ready
+echo UI is ready.
+
+:check_api
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r=Invoke-WebRequest -UseBasicParsing 'http://localhost:8001/health' -TimeoutSec 3; if ($r.StatusCode -ne 200) { exit 1 } } catch { exit 1 }" >nul 2>&1
 if errorlevel 1 (
     echo ERROR: The floor engine did not start.
@@ -85,12 +108,16 @@ if errorlevel 1 (
     goto :failed
 )
 
+call "%ROOT%\scripts\kiosk\open-ui.bat" 5174 laser
+
 echo.
-echo LED Laser is ready.
-echo Opening http://localhost:5174
+echo ==========================================
+echo   LED LASER is running (HARDWARE)
+echo   Open:  http://127.0.0.1:5174/
+echo   Ctrl+Shift+K exits fullscreen kiosk
+echo   To stop: double-click STOP_GAME.bat
+echo ==========================================
 echo.
-start "" "http://localhost:5174"
-ping -n 3 127.0.0.1 >nul
 exit /b 0
 
 :failed
