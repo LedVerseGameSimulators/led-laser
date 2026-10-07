@@ -1,0 +1,26 @@
+{
+  "single": [
+    { "id": "B04", "path": "games/source/--/B04.led" },
+    { "id": "B05", "path": "games/source/--/B05.led" },
+    { "id": "B06", "path": "games/source/--/B06.led" },
+    { "id": "B07", "path": "games/source/--/B07.led" },
+    { "id": "C03", "path": "games/source/---/C03.led" },
+    { "id": "C04", "path": "games/source/---/C04.led" },
+    { "id": "C05", "path": "games/source/---/C05.led" },
+    { "id": "C06", "path": "games/source/---/C06.led" },
+    { "id": "C07", "path": "games/source/---/C07.led" },
+    { "id": "C08", "path": "games/source/---/C08.led" }
+  ],
+  "multi": [],
+  "group": [
+    { "id": "C01 Challenge - 240 Pts", "path": "games/source_group/---/C01 Challenge - 240 Pts.led" },
+    { "id": "C02", "path": "games/source_group/---/C02.led" },
+    { "id": "C03", "path": "games/source_group/---/C03.led" },
+    { "id": "C04", "path": "games/source_group/---/C04.led" },
+    { "id": "C05", "path": "games/source_group/---/C05.led" },
+    { "id": "C06", "path": "games/source_group/---/C06.led" },
+    { "id": "C07", "path": "games/source_group/---/C07.led" },
+    { "id": "C08", "path": "games/source_group/---/C08.led" },
+    { "id": "C09", "path": "games/source_group/---/C09.led" }
+  ]
+}

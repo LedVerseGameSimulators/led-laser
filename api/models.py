@@ -25,6 +25,7 @@ class StartGameRequest(BaseModel):
     card_id: str
     level: Optional[Union[int, str]] = None  # omitted/auto for group mode
     difficulty: str = "normal"  # "easy", "normal", "hard"
+    player_count: int = 1  # Laser: API rejects >= 2 (no Team Battle)
     mode: Optional[str] = None  # "group" → marathon from games/source_group/
 
 class StartGameResponse(BaseModel):

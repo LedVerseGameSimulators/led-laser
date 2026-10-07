@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 
 import { API_URL, WS_BRIDGE_URL } from '../config'
-import { formatLevelLabel, TOURNAMENT_LEVEL_ORDER } from '../levelPlaylists'
+import { formatLevelLabel, firstPlaylistId } from '../levelPlaylists'
 
 function countdownDisplay(state) {
   if (state?.phase !== 'countdown') return null
@@ -32,7 +32,7 @@ function HeartRow({ life, maxLife }) {
   )
 }
 
-export default function SimulatorScreen({ config, onGameEnd }) {
+export default function SimulatorScreen({ config, playlists, onGameEnd }) {
   const [gameState, setGameState] = useState(null)
   const [gameId, setGameId] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -83,8 +83,9 @@ export default function SimulatorScreen({ config, onGameEnd }) {
             card_id: config.cardId,
             level: config.playMode === 'group'
               ? (config.level || 'auto')
-              : (config.level || 'A001'),
+              : (config.level || 'B04'),
             difficulty: config.difficulty || 'normal',
+            player_count: 1,
             ...(config.playMode === 'group' ? { mode: 'group' } : {}),
           })
         })
@@ -150,11 +151,11 @@ export default function SimulatorScreen({ config, onGameEnd }) {
     // Real file stems are only used to load levels via start-game (config.level).
     const startStem =
       config.playMode === 'group' && (!config.level || config.level === 'auto')
-        ? TOURNAMENT_LEVEL_ORDER[0]
+        ? (firstPlaylistId(playlists, 'group') || '')
         : (config.level || '')
     const endStem = st.current_level ?? startStem
-    const levelLabel = formatLevelLabel(config.playMode, startStem)
-    const endLevelLabel = formatLevelLabel(config.playMode, endStem)
+    const levelLabel = formatLevelLabel(config.playMode, startStem, playlists)
+    const endLevelLabel = formatLevelLabel(config.playMode, endStem, playlists)
     // Guests (no RFID): skip save-score only. Always stop the backend game
     // so BGM / session teardown still run.
     const hasRfidCard = Boolean(config.cardId && String(config.cardId).trim())

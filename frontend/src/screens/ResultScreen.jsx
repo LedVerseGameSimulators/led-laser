@@ -4,7 +4,7 @@ import { API_URL } from '../config'
 import { formatLevelLabel } from '../levelPlaylists'
 import VideoBackground from '../components/VideoBackground'
 
-export default function ResultScreen({ result, config, onPlayAgain, onLogout }) {
+export default function ResultScreen({ result, config, playlists, onPlayAgain, onLogout }) {
   const score = result?.score ?? 0
   const score2 = result?.score2 ?? 0
   const multiplayer = result?.multiplayer ?? false
@@ -17,9 +17,13 @@ export default function ResultScreen({ result, config, onPlayAgain, onLogout }) 
   }
   const reason = REASONS[result?.reason] || 'Game Over'
   const levelLabel = result?.end_level ?? result?.level
-    ?? formatLevelLabel(config.playMode, result?.end_level ?? config.level)
+    ?? formatLevelLabel(
+      config.playMode,
+      result?.end_level ?? config.level,
+      playlists,
+    )
   const leaderboardKey = result?.level
-    ?? formatLevelLabel(config.playMode, config.level)
+    ?? formatLevelLabel(config.playMode, config.level, playlists)
 
   const [board, setBoard] = useState([])
   useEffect(() => {

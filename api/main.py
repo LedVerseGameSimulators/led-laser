@@ -86,6 +86,14 @@ async def login(request: LoginRequest) -> LoginResponse:
         return LoginResponse(success=False, error=str(e))
 
 
+# ============= MODE PLAYLISTS =============
+@app.get("/playlists")
+async def get_playlists():
+    """Canonical mode playlists (same as api/mode_playlists.json)."""
+    from .game_manager import _load_mode_playlists
+    return _load_mode_playlists()
+
+
 # ============= START GAME ENDPOINT =============
 @app.post("/start-game")
 async def start_game(request: StartGameRequest) -> StartGameResponse:
@@ -112,6 +120,13 @@ async def start_game(request: StartGameRequest) -> StartGameResponse:
         level = request.level
         if mode == "group" and (level is None or str(level).strip() == ""):
             level = "auto"
+
+        player_count = 1 if mode == "group" else (request.player_count or 1)
+        if player_count >= 2:
+            return StartGameResponse(
+                success=False,
+                error="Team Battle is not available for Laser Escape",
+            )
 
         # Create game instance
         game_id = game_manager.create_game(

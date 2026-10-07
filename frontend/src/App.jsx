@@ -19,7 +19,7 @@ const S = {
 const DEFAULT_CONFIG = {
   game: 'laser',
   playMode: 'single',
-  level: 'A001',
+  level: 'B04',
   playerCount: 1,
   difficulty: 'normal',
   cardId: '',
@@ -35,6 +35,14 @@ export default function App() {
   const [gameConfig, setGameConfig] = useState(DEFAULT_CONFIG)
   const [result, setResult] = useState(null)
   const [booting, setBooting] = useState(true)
+  const [playlists, setPlaylists] = useState(null)
+
+  useEffect(() => {
+    fetch(`${API_URL}/playlists`)
+      .then((r) => r.json())
+      .then((data) => setPlaylists(data))
+      .catch((err) => console.warn('playlists fetch failed:', err))
+  }, [])
 
   useEffect(() => {
     fetch(`${API_URL}/active-game`)
@@ -121,7 +129,11 @@ export default function App() {
   return (
     <>
       {screen === S.SETUP && (
-        <SetupScreen game={gameConfig.game} onConfirm={handleSetup} />
+        <SetupScreen
+          game={gameConfig.game}
+          playlists={playlists}
+          onConfirm={handleSetup}
+        />
       )}
       {screen === S.LOGIN && (
         <LoginScreen
@@ -135,12 +147,17 @@ export default function App() {
         <CountdownScreen onDone={handleCountdownDone} />
       )}
       {screen === S.SIMULATOR && (
-        <SimulatorScreen config={gameConfig} onGameEnd={handleGameEnd} />
+        <SimulatorScreen
+          config={gameConfig}
+          playlists={playlists}
+          onGameEnd={handleGameEnd}
+        />
       )}
       {screen === S.RESULT && (
         <ResultScreen
           result={result}
           config={gameConfig}
+          playlists={playlists}
           onPlayAgain={handlePlayAgain}
           onLogout={handleLogout}
         />
