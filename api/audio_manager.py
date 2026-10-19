@@ -18,6 +18,32 @@ _CMD_PLAY_STINGER = "play_stinger"
 _CMD_SHUTDOWN = "shutdown"
 
 
+def _audio_file_usable(path: str) -> bool:
+    if not path or not Path(path).is_file():
+        return False
+    try:
+        with open(path, "rb") as fh:
+            if fh.read(8).startswith(b"version "):
+                logger.warning(
+                    f"Audio file is a Git LFS pointer — run git lfs pull: {path}"
+                )
+                return False
+    except OSError:
+        return False
+    return True
+
+
+def _release_music(mixer) -> None:
+    try:
+        mixer.music.stop()
+    except Exception:
+        pass
+    try:
+        mixer.music.unload()
+    except Exception:
+        pass
+
+
 class AudioManager:
     """Fire-and-forget pygame audio on a daemon worker thread."""
 
@@ -42,7 +68,7 @@ class AudioManager:
         try:
             import pygame
             if not pygame.mixer.get_init():
-                pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
+                pygame.mixer.init(frequency=22050, size=-16, channels=8, buffer=512)
             self._mixer = pygame.mixer
             self._active = True
         except Exception as e:
@@ -72,7 +98,7 @@ class AudioManager:
                 continue
             try:
                 if cmd == _CMD_STOP_BGM:
-                    self._mixer.music.stop()
+                    _release_music(self._mixer)
                 elif cmd == _CMD_START_BGM:
                     path, loops = payload
                     if Path(path).exists():
@@ -86,21 +112,25 @@ class AudioManager:
                             ch.play(self._mixer.Sound(path))
                 elif cmd == _CMD_PLAY_STINGER:
                     path = payload
-                    try:
-                        self._mixer.music.stop()
-                    except Exception:
-                        pass
-                    if not path or not Path(path).exists():
-                        logger.warning(f"Transition stinger missing: {path}")
+                    _release_music(self._mixer)
+                    if not _audio_file_usable(path):
+                        logger.warning(f"Transition stinger missing or unusable: {path}")
                         continue
                     try:
-                        self._mixer.music.load(path)
-                        self._mixer.music.play(0)
-                    except Exception as exc:
-                        logger.warning(f"Transition stinger (music) failed: {exc}")
                         ch = self._mixer.find_channel(True)
                         if ch:
+                            ch.set_volume(1.0)
                             ch.play(self._mixer.Sound(path))
+                            logger.info("Transition stinger played (sfx)")
+                            continue
+                    except Exception as exc:
+                        logger.warning(f"Transition stinger (sfx) failed: {exc}")
+                    try:
+                        self._mixer.music.load(path)
+                        self._mixer.music.play(loops=0)
+                        logger.info("Transition stinger played (music)")
+                    except Exception as exc:
+                        logger.warning(f"Transition stinger (music) failed: {exc}")
             except Exception as e:
                 logger.debug(f"Audio worker error ({cmd}): {e}")
 
