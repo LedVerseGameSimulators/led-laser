@@ -78,11 +78,29 @@ class AudioManager:
                     if Path(path).exists():
                         self._mixer.music.load(path)
                         self._mixer.music.play(loops=loops)
-                elif cmd in (_CMD_PLAY_SFX, _CMD_PLAY_STINGER):
+                elif cmd == _CMD_PLAY_SFX:
                     path = payload
                     if Path(path).exists():
-                        snd = self._mixer.Sound(path)
-                        snd.play()
+                        ch = self._mixer.find_channel(True)
+                        if ch:
+                            ch.play(self._mixer.Sound(path))
+                elif cmd == _CMD_PLAY_STINGER:
+                    path = payload
+                    try:
+                        self._mixer.music.stop()
+                    except Exception:
+                        pass
+                    if not path or not Path(path).exists():
+                        logger.warning(f"Transition stinger missing: {path}")
+                        continue
+                    try:
+                        self._mixer.music.load(path)
+                        self._mixer.music.play(0)
+                    except Exception as exc:
+                        logger.warning(f"Transition stinger (music) failed: {exc}")
+                        ch = self._mixer.find_channel(True)
+                        if ch:
+                            ch.play(self._mixer.Sound(path))
             except Exception as e:
                 logger.debug(f"Audio worker error ({cmd}): {e}")
 

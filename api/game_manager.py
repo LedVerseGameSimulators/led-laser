@@ -2012,6 +2012,7 @@ class GameManager:
                 def _run_transition(path, phase_name):
                     game.accepting_input = False
                     audio.stop_bgm()
+                    audio.play_stinger()
                     if not play_effect_led(
                         path,
                         game,
@@ -2025,8 +2026,6 @@ class GameManager:
                         logger.error(
                             f"Transition effect missing/failed ({phase_name}): {path}"
                         )
-                    # No stinger hold — go straight to countdown / session end after (a).
-                    audio.play_stinger()
                     _reset_hazard_timers()
                     game._effect_last_floor = None
 

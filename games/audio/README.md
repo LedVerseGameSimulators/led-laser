@@ -1,9 +1,3 @@
-# Laser audio assets
-
-| File | Use |
-|------|-----|
-| `bgm_laser.mp3` | Gameplay BGM (Squid Game remix from venue pack) |
-| `bgm.mp3` | Alias of `bgm_laser.mp3` (compat) |
-| `score_positive.mp3` / `score_negative.mp3` | Score SFX |
-| `countdown_tick.mp3` | 3-2-1 (**stock** for now) |
-| `transition_stinger.mp3` | Clear + fail (**stock** for now) |
+version https://git-lfs.github.com/spec/v1
+oid sha256:1c98b67c90f8091913d2628b773fab6cc0485253a8fada8bd17d5efe35112b4f
+size 349
