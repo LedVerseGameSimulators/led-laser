@@ -2012,7 +2012,6 @@ class GameManager:
                 def _run_transition(path, phase_name):
                     game.accepting_input = False
                     audio.stop_bgm()
-                    audio.play_stinger()
                     if not play_effect_led(
                         path,
                         game,
