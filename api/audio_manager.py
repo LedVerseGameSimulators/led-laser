@@ -15,6 +15,7 @@ _CMD_STOP_BGM = "stop_bgm"
 _CMD_START_BGM = "start_bgm"
 _CMD_PLAY_SFX = "play_sfx"
 _CMD_PLAY_STINGER = "play_stinger"
+_CMD_PLAY_TRANSITION = "play_transition"
 _CMD_SHUTDOWN = "shutdown"
 
 
@@ -78,6 +79,35 @@ class AudioManager:
         self._thread = threading.Thread(target=self._worker, daemon=True, name="laser-audio")
         self._thread.start()
 
+    def _play_transition_locked(self, path: str | None) -> None:
+        """Level clear/fail panel: stop gameplay BGM, cut score SFX, play one-shot clip."""
+        if not self._mixer:
+            return
+        _release_music(self._mixer)
+        try:
+            self._mixer.stop()
+        except Exception:
+            pass
+        if not _audio_file_usable(path):
+            logger.warning(f"Level transition panel audio missing or unusable: {path}")
+            return
+        try:
+            self._mixer.music.load(path)
+            self._mixer.music.set_volume(1.0)
+            self._mixer.music.play(loops=0)
+            logger.info("Level transition panel audio played (music)")
+            return
+        except Exception as exc:
+            logger.warning(f"Level transition panel audio (music) failed: {exc}")
+        try:
+            ch = self._mixer.find_channel(True)
+            if ch:
+                ch.set_volume(1.0)
+                ch.play(self._mixer.Sound(path))
+                logger.info("Level transition panel audio played (sfx)")
+        except Exception as exc:
+            logger.warning(f"Level transition panel audio (sfx) failed: {exc}")
+
     def _resolve(self, path: str | Path) -> str:
         p = Path(path)
         if not p.is_absolute():
@@ -110,27 +140,8 @@ class AudioManager:
                         ch = self._mixer.find_channel(True)
                         if ch:
                             ch.play(self._mixer.Sound(path))
-                elif cmd == _CMD_PLAY_STINGER:
-                    path = payload
-                    _release_music(self._mixer)
-                    if not _audio_file_usable(path):
-                        logger.warning(f"Transition stinger missing or unusable: {path}")
-                        continue
-                    try:
-                        ch = self._mixer.find_channel(True)
-                        if ch:
-                            ch.set_volume(1.0)
-                            ch.play(self._mixer.Sound(path))
-                            logger.info("Transition stinger played (sfx)")
-                            continue
-                    except Exception as exc:
-                        logger.warning(f"Transition stinger (sfx) failed: {exc}")
-                    try:
-                        self._mixer.music.load(path)
-                        self._mixer.music.play(loops=0)
-                        logger.info("Transition stinger played (music)")
-                    except Exception as exc:
-                        logger.warning(f"Transition stinger (music) failed: {exc}")
+                elif cmd in (_CMD_PLAY_STINGER, _CMD_PLAY_TRANSITION):
+                    self._play_transition_locked(payload)
             except Exception as e:
                 logger.debug(f"Audio worker error ({cmd}): {e}")
 
@@ -155,6 +166,25 @@ class AudioManager:
     def play_stinger(self, path: str | None = None):
         p = path or str(AUDIO_DIR / "transition_stinger.mp3")
         self._put(_CMD_PLAY_STINGER, self._resolve(p))
+
+    def play_transition_panel(self, phase: str, path: str | None = None) -> None:
+        """Audio for level_clear / level_fail panel (after level ends, before countdown)."""
+        if path is None:
+            for name in (
+                f"{phase}.mp3",
+                "transition_stinger.mp3",
+            ):
+                candidate = AUDIO_DIR / name
+                if candidate.is_file():
+                    path = str(candidate)
+                    break
+            else:
+                path = str(AUDIO_DIR / "transition_stinger.mp3")
+        self._put(_CMD_PLAY_TRANSITION, self._resolve(path))
+
+    def play_transition_stinger(self, path: str | None = None) -> None:
+        """Alias for panel audio (clear/fail transition clip)."""
+        self.play_transition_panel("level_clear", path)
 
     def tick_on_second(self, n: int):
         self.play_sfx(str(AUDIO_DIR / "countdown_tick.mp3"))

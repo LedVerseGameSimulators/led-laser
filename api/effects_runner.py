@@ -128,8 +128,6 @@ def play_effect_led(
     floor_rows, floor_cols = led_table.led_row, led_table.led_col
     last_label = None
     last_nonzero_snap = None
-    stinger_sent = {"v": False}
-
     max_end = max((getattr(g, "end_time_sec", 0) for g in dg.values()), default=0.0)
 
     def _effect_cb(_play_self, _dgroup, _time_pass, total_pass):
@@ -138,14 +136,6 @@ def play_effect_led(
             return False
         if total_pass >= max_end:
             return False
-        if (
-            phase in ("level_clear", "level_fail")
-            and audio is not None
-            and total_pass < 0.05
-            and not stinger_sent["v"]
-        ):
-            audio.play_stinger()
-            stinger_sent["v"] = True
         try:
             led_table.redraw_led_table_default(draw_canvas=False)
             label = None

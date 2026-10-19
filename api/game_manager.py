@@ -1918,6 +1918,7 @@ class GameManager:
                 from .audio_manager import create_audio_manager
                 from .effects_runner import (
                     effects_dir,
+                    hold_last_frame,
                     play_effect_led,
                 )
 
@@ -2011,8 +2012,16 @@ class GameManager:
 
                 def _run_transition(path, phase_name):
                     game.accepting_input = False
-                    audio.stop_bgm()
-                    if not play_effect_led(
+                    game.update_state(
+                        phase=phase_name,
+                        accepting_input=False,
+                        countdown_label=None,
+                    )
+                    if phase_name in ("level_clear", "level_fail"):
+                        audio.play_transition_panel(phase_name)
+                    else:
+                        audio.stop_bgm()
+                    ok = play_effect_led(
                         path,
                         game,
                         led_table,
@@ -2021,9 +2030,19 @@ class GameManager:
                         phase=phase_name,
                         audio=audio,
                         hw_draw_fn=_hw_draw_effect,
-                    ):
+                    )
+                    if not ok:
                         logger.error(
                             f"Transition effect missing/failed ({phase_name}): {path}"
+                        )
+                    elif phase_name in ("level_clear", "level_fail"):
+                        snap = getattr(game, "_effect_last_floor", None)
+                        hold_last_frame(
+                            game,
+                            led_table,
+                            _hw_draw_effect,
+                            phase_name,
+                            floor_snapshot=snap,
                         )
                     _reset_hazard_timers()
                     game._effect_last_floor = None
