@@ -161,7 +161,9 @@ export default function LoginScreen({ gameTitle = 'Battle Arena', onLogin, playe
       p1Info.player_name || '',
       p2Info?.player_name || '',
       p1Info.minutes_remaining ?? null,
-      p2Info?.minutes_remaining ?? null
+      p2Info?.minutes_remaining ?? null,
+      p1Info,
+      playerCount === 2 ? p2Info : null
     )
   }
 

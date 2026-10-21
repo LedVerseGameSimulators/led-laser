@@ -8,6 +8,7 @@ import os
 import sqlite3
 import threading
 import datetime
+import json
 
 # Try to import db_operation from game; optional for headless testing
 DBOperation = None
@@ -20,6 +21,30 @@ except ImportError as e:
 # RFID server polls it over HTTP). Per-repo path = dev matches prod topology
 # (5 machines = 5 files), so no cross-game contamination via a shared file.
 _SCORES_DB = str(GAMES_ROOT) + "/setting/ledplaydb.sqlite"
+
+
+def _coerce_int_or_none(value):
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _roster_ids_to_json(value):
+    """Store roster snapshots as JSON text; None if empty/unparseable."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        s = value.strip()
+        return s if s else None
+    if isinstance(value, (list, tuple)):
+        try:
+            return json.dumps(list(value))
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 class Database:
@@ -67,7 +92,14 @@ class Database:
                                  ("final_score", "REAL"), ("final_score2", "REAL"),
                                  ("levels_cleared", "INTEGER"), ("end_level", "TEXT"),
                                  ("level_file", "TEXT"), ("end_level_file", "TEXT"),
-                                 ("difficulty", "TEXT"), ("started_at", "TEXT")):
+                                 ("difficulty", "TEXT"), ("started_at", "TEXT"),
+                                 ("play_mode", "TEXT"),
+                                 ("session_id", "INTEGER"), ("group_id", "INTEGER"),
+                                 ("roster_size_at_play", "INTEGER"),
+                                 ("roster_player_ids", "TEXT"),
+                                 ("session_id2", "INTEGER"), ("group_id2", "INTEGER"),
+                                 ("roster_size_at_play2", "INTEGER"),
+                                 ("roster_player_ids2", "TEXT")):
                     try:
                         con.execute(f"ALTER TABLE hex_scores ADD COLUMN {col} {typ}")
                     except Exception:
@@ -115,8 +147,11 @@ class Database:
                     "INSERT INTO hex_scores (card_id, card_id2, multiplayer, level, "
                     "end_level, level_file, end_level_file, score, score2, "
                     "final_score, final_score2, life, lives_start, result, time_used, "
-                    "levels_cleared, difficulty, started_at, ts, game) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "levels_cleared, difficulty, started_at, ts, game, "
+                    "play_mode, session_id, group_id, roster_size_at_play, "
+                    "roster_player_ids, session_id2, group_id2, "
+                    "roster_size_at_play2, roster_player_ids2) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         str(game_info.get("card_id", "")),
                         str(game_info.get("card_id2", "") or ""),
@@ -138,6 +173,15 @@ class Database:
                         str(game_info.get("started_at", "") or ""),
                         datetime.datetime.now().isoformat(timespec="seconds"),
                         GAME_NAME,
+                        str(game_info.get("play_mode", "") or "") or None,
+                        _coerce_int_or_none(game_info.get("session_id")),
+                        _coerce_int_or_none(game_info.get("group_id")),
+                        _coerce_int_or_none(game_info.get("roster_size_at_play")),
+                        _roster_ids_to_json(game_info.get("roster_player_ids")),
+                        _coerce_int_or_none(game_info.get("session_id2")),
+                        _coerce_int_or_none(game_info.get("group_id2")),
+                        _coerce_int_or_none(game_info.get("roster_size_at_play2")),
+                        _roster_ids_to_json(game_info.get("roster_player_ids2")),
                     ),
                 )
                 con.commit()
@@ -210,8 +254,11 @@ class Database:
                     "SELECT card_id, card_id2, multiplayer, level, end_level, "
                     "level_file, end_level_file, "
                     "score, score2, final_score, final_score2, life, lives_start, "
-                    "result, time_used, levels_cleared, difficulty, started_at, ts, game "
-                    "FROM hex_scores WHERE ts > ? AND game = ? ORDER BY ts ASC",
+                    "result, time_used, levels_cleared, difficulty, started_at, ts, game, "
+                    "play_mode, session_id, group_id, roster_size_at_play, "
+                    "roster_player_ids, session_id2, group_id2, "
+                    "roster_size_at_play2, roster_player_ids2 "
+                    "FROM hex_scores WHERE ts >= ? AND game = ? ORDER BY ts ASC",
                     (since, GAME_NAME),
                 ).fetchall()
                 con.close()
@@ -220,7 +267,10 @@ class Database:
                  "level_file", "end_level_file",
                  "score", "score2", "final_score", "final_score2", "life",
                  "lives_start", "result", "time_used", "levels_cleared",
-                 "difficulty", "started_at", "ts", "game"], r
+                 "difficulty", "started_at", "ts", "game",
+                 "play_mode", "session_id", "group_id", "roster_size_at_play",
+                 "roster_player_ids", "session_id2", "group_id2",
+                 "roster_size_at_play2", "roster_player_ids2"], r
             )) for r in rows]
         except Exception as e:
             logger.error(f"Error getting scores since {since}: {e}")

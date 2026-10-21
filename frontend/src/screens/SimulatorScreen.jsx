@@ -1,6 +1,11 @@
 import { useEffect, useState, useRef } from 'react'
 
-import { API_URL, WS_BRIDGE_URL } from '../config'
+import { API_URL, WS_BRIDGE_URL, RFID_API_URL } from '../config'
+import {
+  clearRfidResumeContext,
+  pickResumeFields,
+  saveRfidResumeContext,
+} from '../rfidResumeContext'
 import { formatLevelLabel, firstPlaylistId } from '../levelPlaylists'
 
 function countdownDisplay(state) {
@@ -18,6 +23,49 @@ function isInputBlocked(state) {
 
 function showPhaseOverlay(state) {
   return ['countdown', 'level_clear', 'level_fail'].includes(state?.phase)
+}
+
+/** Step 0 contract: single→quick_play, group→tournament (Laser has no team_battle). */
+function contractPlayMode(playMode) {
+  if (playMode === 'group') return 'tournament'
+  if (playMode === 'multi') return 'team_battle'
+  return 'quick_play'
+}
+
+async function revalidateRfidCard(cardId, fallback) {
+  if (!cardId || !String(cardId).trim()) return fallback
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 2000)
+    const res = await fetch(
+      `${RFID_API_URL}/validate?card_id=${encodeURIComponent(String(cardId).trim())}`,
+      { signal: ctrl.signal }
+    )
+    clearTimeout(timer)
+    const data = await res.json()
+    if (data?.valid) return data
+  } catch {
+    /* best-effort; never block save */
+  }
+  return fallback
+}
+
+function playFactsFromValidate(v) {
+  if (!v || !v.valid) {
+    return {
+      session_id: null,
+      group_id: null,
+      roster_size_at_play: null,
+      roster_player_ids: null,
+    }
+  }
+  const roster = Array.isArray(v.roster_player_ids) ? v.roster_player_ids : null
+  return {
+    session_id: v.session_id ?? null,
+    group_id: v.group_id ?? null,
+    roster_size_at_play: v.roster_size ?? (roster ? roster.length : null),
+    roster_player_ids: roster,
+  }
 }
 
 function HeartRow({ life, maxLife }) {
@@ -93,6 +141,7 @@ export default function SimulatorScreen({ config, playlists, onGameEnd }) {
         if (data.success) {
           setGameId(data.game_id)
           gameIdRef.current = data.game_id
+          saveRfidResumeContext(data.game_id, pickResumeFields(config))
           setLoading(false)
         } else {
           setError(data.error || 'Failed to start game')
@@ -113,6 +162,7 @@ export default function SimulatorScreen({ config, playlists, onGameEnd }) {
         if (data.success) {
           setGameId(config.resumeGameId)
           gameIdRef.current = config.resumeGameId
+          saveRfidResumeContext(config.resumeGameId, pickResumeFields(config))
           setLoading(false)
           return
         }
@@ -160,14 +210,23 @@ export default function SimulatorScreen({ config, playlists, onGameEnd }) {
     // so BGM / session teardown still run.
     const hasRfidCard = Boolean(config.cardId && String(config.cardId).trim())
 
+    if (id) {
+      clearRfidResumeContext(id)
+    }
+
     try {
       if (hasRfidCard) {
+        const playMode = contractPlayMode(config.playMode)
+        if (config.playMode === 'multi') {
+          console.warn('Laser save-score: unexpected playMode=multi (no Team Battle)')
+        }
+        const validated = await revalidateRfidCard(config.cardId, config.rfidValidate)
+        const facts = playFactsFromValidate(validated)
         await fetch(`${API_URL}/save-score`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             card_id: config.cardId,
-            card_id2: config.cardId2 || null,
             level: levelLabel,
             end_level: endLevelLabel,
             level_file: startStem,
@@ -176,7 +235,12 @@ export default function SimulatorScreen({ config, playlists, onGameEnd }) {
             score2: finalScore2,
             final_score: st.final_score ?? finalScore,
             final_score2: st.final_score2 ?? finalScore2,
-            multiplayer: finalMultiplayer,
+            multiplayer: false,
+            play_mode: playMode,
+            session_id: facts.session_id,
+            group_id: facts.group_id,
+            roster_size_at_play: facts.roster_size_at_play,
+            roster_player_ids: facts.roster_player_ids,
             life: finalLife,
             lives_start: st.max_life ?? 0,
             result: st.result ?? null,
@@ -184,8 +248,6 @@ export default function SimulatorScreen({ config, playlists, onGameEnd }) {
             levels_cleared: st.levels_cleared ?? 0,
             difficulty: config.difficulty ?? '',
             started_at: st.started_at ?? '',
-            player_name: config.playerName || '',
-            player_name2: config.playerName2 || '',
           })
         })
       }
@@ -203,7 +265,7 @@ export default function SimulatorScreen({ config, playlists, onGameEnd }) {
     onGameEnd({
       score: finalScore,
       score2: finalScore2,
-      multiplayer: finalMultiplayer,
+      multiplayer: false,
       time_elapsed: finalTime,
       life: finalLife,
       level: levelLabel,
