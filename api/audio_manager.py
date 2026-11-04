@@ -7,7 +7,9 @@ import threading
 from pathlib import Path
 from loguru import logger
 
-GAMES_ROOT = Path(__file__).resolve().parent.parent / "games"
+from .runtime_paths import games_root
+
+GAMES_ROOT = games_root()
 AUDIO_DIR = GAMES_ROOT / "audio"
 
 # Commands for the worker thread

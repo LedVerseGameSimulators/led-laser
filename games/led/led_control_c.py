@@ -38,7 +38,7 @@ class LedControl:
                 return list_serial_open_error
             if yanqian.yanqian():
                 # Absolute shelve path — cwd may not be games/
-                f = shelve.open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "setting", "debug_parameter"))
+                f = shelve.open(os.path.join(os.environ.get('GAMES_ROOT') or os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "setting", "debug_parameter"))
                 com_is_block = f.get("com_is_block")
                 f.close()
                 logger.warning("串口阻塞{}", com_is_block)

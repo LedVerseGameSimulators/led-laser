@@ -4,12 +4,14 @@ Decoupled game logic from Tkinter UI. React frontend connects via HTTP + WebSock
 """
 from fastapi import FastAPI, WebSocket, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import asyncio
 import json
 from loguru import logger
 import datetime
 
 from .config import API_HOST, API_PORT, API_DEBUG, GAME_NAME, GAMES_ROOT
+from .runtime_paths import ui_dir
 from .models import (
     LoginRequest, LoginResponse, PlayerInfo,
     StartGameRequest, StartGameResponse,
@@ -524,6 +526,8 @@ async def get_game_state():
 async def startup():
     logger.info(f"API starting on {API_HOST}:{API_PORT}")
     logger.info(f"Game: {GAME_NAME}")
+    _ui = ui_dir()
+    logger.info(f"UI dir: {_ui} (mounted={(_ui / 'index.html').is_file()})")
 
 
 @app.get("/hw-debug")
@@ -563,6 +567,25 @@ async def shutdown():
     logger.info("API shutting down")
     if db:
         db.close()
+
+
+# ============= STATIC UI (mount LAST so API routes win) =============
+_ui_path = ui_dir()
+if _ui_path.is_dir() and (_ui_path / "index.html").is_file():
+    from fastapi.responses import HTMLResponse
+    from .activerse_config import inject_runtime_config
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/index.html", include_in_schema=False)
+    async def _ui_index():
+        # Read per request so edits to games/setting/activerse.json apply on reload.
+        html = (_ui_path / "index.html").read_text(encoding="utf-8")
+        return HTMLResponse(inject_runtime_config(html), headers={"Cache-Control": "no-store"})
+
+    app.mount("/", StaticFiles(directory=str(_ui_path), html=True), name="ui")
+    logger.info(f"Serving UI from {_ui_path}")
+else:
+    logger.info(f"No UI bundle at {_ui_path} (API only)")
 
 
 # ============= RUN =============
