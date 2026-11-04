@@ -14,3 +14,11 @@ games/setting/ledplaydb.sqlite
 # Source archives (local backup bundles)
 games/source/*.rar
 *.rar
+
+# K2b freeze / packaging
+dist/
+packaging/.venv/
+packaging/__pycache__/
+*.spec
+build/
+nuitka-crash-report.xml

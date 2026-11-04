@@ -494,7 +494,10 @@ _MODE_PLAYLISTS_CACHE = None
 
 
 def _install_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    # install_root(): repo root in dev, exe directory when frozen (Nuitka __file__ is unreliable)
+    from .runtime_paths import install_root
+
+    return install_root()
 
 
 def _mode_playlists_json_path():
